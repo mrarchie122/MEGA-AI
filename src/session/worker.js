@@ -241,11 +241,20 @@ global.__require = function req(fileUrl = import.meta.url) {
     }
 
     sendLog('Creating WhatsApp socket...')
+    const browserName = String(process.env.WA_BROWSER_NAME || 'Edge')
+    const browserSignature = (() => {
+      try {
+        return Browsers.macOS(browserName)
+      } catch {
+        return Browsers.macOS('Chrome')
+      }
+    })()
+
     const conn = makeWASocket({
       ...(waVersion?.length ? { version: waVersion } : {}),
       logger: pino({ level: 'silent' }), // silent — we do our own logging
       printQRInTerminal: false,
-      browser: Browsers.macOS('Chrome'),
+      browser: browserSignature,
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
