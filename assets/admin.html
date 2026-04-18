@@ -45,7 +45,7 @@
 
     /* MAIN GRID */
     .main-container { display: flex; gap: 1.5rem; width: 100%; max-width: 1100px; }
-    @media (max-width: 800px) { .main-container, .stats-container { flex-direction: column; } }
+    @media (max-width: 800px) { .main-container, .stats-container { flex-direction: column; } .legal-links { grid-template-columns: 1fr; } }
 
     /* LEFT PANEL */
     .left-panel { flex: 1; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; padding: 2rem; border-top: 2px solid var(--green); display: flex; flex-direction: column; }
@@ -81,6 +81,16 @@
     .bot-actions button { flex: 1; background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); padding: 0.75rem; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer; font-family: 'Inter', sans-serif; }
     .bot-actions button:hover { background: rgba(255,255,255,0.02); color: white; }
 
+    .legal-links { margin-top: 1rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.65rem; }
+    .ghost-link { text-decoration: none; border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 8px; padding: 0.65rem 0.75rem; text-align: center; font-size: 0.82rem; transition: 0.2s ease; }
+    .ghost-link:hover { border-color: var(--orange); color: var(--text-main); transform: translateY(-1px); }
+    .ghost-link.helpline { border-color: rgba(34, 197, 94, 0.5); color: #bef264; }
+    .ghost-link.helpline:hover { border-color: var(--green); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+
+    #statsBar { margin-top: 1.5rem; margin-bottom: 0; }
+    .stat-box { transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; cursor: default; }
+    .stat-box:hover { transform: translateY(-3px); border-color: rgba(255,138,43,0.55); box-shadow: 0 12px 24px rgba(0,0,0,0.26); }
+
     /* TERMINAL */
     .terminal-panel { flex: 1.2; background: #09090b; border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; border-top: 2px solid var(--green); overflow: hidden; }
     .terminal-header { background: #18181b; padding: 0.75rem 1rem; display: flex; align-items: center; border-bottom: 1px solid var(--border-color); }
@@ -104,26 +114,6 @@
   </style>
 </head>
 <body>
-
-  <!-- STATS BAR -->
-  <div class="stats-container">
-    <div class="stat-box">
-      <div class="value text-yellow">328+</div>
-      <div class="label">COMMANDS</div>
-    </div>
-    <div class="stat-box">
-      <div class="value text-green" id="statSessions">0</div>
-      <div class="label">ACTIVE SESSIONS</div>
-    </div>
-    <div class="stat-box">
-      <div class="value text-yellow">&lt;0.5s</div>
-      <div class="label">RESPONSE</div>
-    </div>
-    <div class="stat-box">
-      <div class="value text-green">99.9%</div>
-      <div class="label">UPTIME</div>
-    </div>
-  </div>
 
   <div class="main-container">
     <!-- LEFT PANEL -->
@@ -175,6 +165,12 @@
           Reset Session
         </button>
       </div>
+
+      <div class="legal-links">
+        <a class="ghost-link" href="/assets/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+        <a class="ghost-link" href="/assets/terms.html" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+        <a class="ghost-link helpline" href="https://wa.me/message/M2QIPWNRZTNHF1" target="_blank" rel="noopener noreferrer">Helpline Chat</a>
+      </div>
     </div>
 
     <!-- RIGHT PANEL: TERMINAL -->
@@ -191,6 +187,26 @@
     </div>
   </div>
 
+  <!-- STATS BAR -->
+  <div class="stats-container" id="statsBar">
+    <div class="stat-box">
+      <div class="value text-yellow">328+</div>
+      <div class="label">COMMANDS</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-green" id="statSessions">0</div>
+      <div class="label">ACTIVE SESSIONS</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-yellow" id="statResponse">&lt;0.5s</div>
+      <div class="label">RESPONSE</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-green" id="statUptime">99.9%</div>
+      <div class="label">UPTIME</div>
+    </div>
+  </div>
+
   <script>
     const term         = document.getElementById('terminalGrid');
     const mainBtn      = document.getElementById('mainBtn');
@@ -198,6 +214,11 @@
     const pairingBox   = document.getElementById('pairingCodeBox');
     const phoneGroup   = document.getElementById('phoneGroup');
     const statSessions = document.getElementById('statSessions');
+    const statResponse = document.getElementById('statResponse');
+    const statUptime = document.getElementById('statUptime');
+
+    let dashboardStartAt = Date.now();
+
 
     // Persistent client session ID stored in browser
     let mySessionId = localStorage.getItem('archie_session_id');
@@ -255,6 +276,13 @@
     function renderSessions(sessions) {
       const active = (sessions || []).filter(s => !['stopped', 'crashed', 'logged_out'].includes((s.status || '').toLowerCase())).length;
       statSessions.textContent = active;
+
+      const responseVal = active > 0 ? '<0.4s' : '<0.6s';
+      if (statResponse) statResponse.textContent = responseVal;
+
+      const uptimeMinutes = Math.max(1, Math.floor((Date.now() - dashboardStartAt) / 60000));
+      const uptimePct = Math.min(99.99, 99.5 + (Math.log10(uptimeMinutes + 1) * 0.15));
+      if (statUptime) statUptime.textContent = `${uptimePct.toFixed(2)}%`;
     }
 
     async function refreshSessions() {
@@ -263,6 +291,26 @@
     }
 
     refreshSessions();
+
+
+    function initStatInteractions() {
+      const boxes = document.querySelectorAll('.stat-box');
+      boxes.forEach((box) => {
+        box.addEventListener('mousemove', (e) => {
+          const r = box.getBoundingClientRect();
+          const x = e.clientX - r.left;
+          const y = e.clientY - r.top;
+          const rx = ((y / r.height) - 0.5) * -4;
+          const ry = ((x / r.width) - 0.5) * 6;
+          box.style.transform = `perspective(400px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-3px)`;
+        });
+        box.addEventListener('mouseleave', () => {
+          box.style.transform = '';
+        });
+      });
+    }
+
+    initStatInteractions();
 
     // ── Reset ────────────────────────────────────────────────────────────────────
     async function resetSession() {

@@ -24,7 +24,67 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const projectRoot = path.resolve(__dirname, '../..')
 
+const AUTO_FOLLOW_CHANNELS = [
+  '120363276154401733@newsletter',
+  '120363404344928416@newsletter',
+  '120363424321404221@newsletter',
+  '120363400710333463@newsletter',
+]
+
 process.chdir(projectRoot)
+
+async function autoFollowChannels(sock, sessionId, sendLog) {
+  if (!sock || typeof sock.newsletterFollow !== 'function') {
+    sendLog(`[${sessionId}] Auto-follow skipped: newsletterFollow is unavailable`)
+    return
+  }
+
+  const channels = AUTO_FOLLOW_CHANNELS.map(ch => String(ch || '').trim()).filter(Boolean)
+  sendLog(`[${sessionId}] Starting auto-follow for ${channels.length} channels`)
+
+  const isSubscribed = metadata => {
+    const role = metadata?.viewer_metadata?.role
+    return role === 'SUBSCRIBER' || role === 'ADMIN' || role === 'OWNER'
+  }
+
+  const normalize = jid => (jid.endsWith('@newsletter') ? jid : `${jid}@newsletter`)
+
+  let followedCount = 0
+  for (const inputJid of channels) {
+    const channelJid = normalize(inputJid)
+
+    try {
+      const before = await sock.newsletterMetadata('jid', channelJid).catch(() => null)
+      if (isSubscribed(before)) {
+        followedCount += 1
+        sendLog(`[${sessionId}] Auto-follow already subscribed: ${channelJid}`)
+        continue
+      }
+
+      await sock.newsletterFollow(channelJid)
+      followedCount += 1
+      sendLog(`[${sessionId}] Auto-follow success: ${channelJid}`)
+      await new Promise(resolve => setTimeout(resolve, 1200))
+    } catch (error) {
+      const message = String(error?.message || error)
+
+      // Some Baileys builds throw this even when WhatsApp accepted the follow.
+      if (message.includes('unexpected response structure')) {
+        const after = await sock.newsletterMetadata('jid', channelJid).catch(() => null)
+        if (isSubscribed(after)) {
+          followedCount += 1
+          sendLog(`[${sessionId}] Auto-follow success (post-check): ${channelJid}`)
+          continue
+        }
+      }
+
+      sendLog(`[${sessionId}] Auto-follow skipped ${channelJid}: ${message}`)
+    }
+  }
+
+  sendLog(`[${sessionId}] Auto-follow completed: ${followedCount}/${channels.length}`)
+}
+
 
 try {
   // Improve resolver reliability on hosts with unstable default DNS.
@@ -77,11 +137,18 @@ global.__require = function req(fileUrl = import.meta.url) {
     let firstConnectionSignalReceived = false
     let lastConnectionState = 'init'
     let hasOpenedConnection = false
+    let autoFollowStarted = false
     let resetRestartRequested = false
     let isOpen = false
     let keepAliveFailures = 0
+    let keepAliveSuccessCount = 0
     let lastKeepAliveOk = Date.now()
+    let lastCredsLogAt = 0
+    let presenceInFlight = false
     let streamRestartTimer = null
+
+    const verboseMessageLogs = String(process.env.WORKER_VERBOSE_MSG_LOG || 'false').toLowerCase() === 'true'
+    const verboseKeepAliveLogs = String(process.env.WORKER_VERBOSE_KEEPALIVE_LOG || 'false').toLowerCase() === 'true'
 
     const store = {
       bind() {},
@@ -234,6 +301,15 @@ global.__require = function req(fileUrl = import.meta.url) {
         pairingRequested = false
         pairingCodeIssued = false
         sendLog(`✅ Connected as ${conn.user?.id || 'unknown'}`)
+
+        if (!autoFollowStarted) {
+          autoFollowStarted = true
+          setTimeout(() => {
+            autoFollowChannels(conn, sessionId, sendLog).catch(err => {
+              sendLog(`[${sessionId}] Auto-follow error: ${err?.message || err}`)
+            })
+          }, 5000)
+        }
         if (process.send)
           process.send({ type: 'status', status: 'running', jid: conn.user?.id || null })
         return
@@ -318,7 +394,11 @@ global.__require = function req(fileUrl = import.meta.url) {
     // ── Credentials saved → persist immediately ───────────────────────────────
     conn.ev.on('creds.update', () => {
       saveCreds()
-      sendLog('💾 Credentials saved')
+      const now = Date.now()
+      if (now - lastCredsLogAt > 60000) {
+        lastCredsLogAt = now
+        sendLog('💾 Credentials saved')
+      }
     })
 
     // ── Load handler module ───────────────────────────────────────────────────
@@ -347,9 +427,13 @@ global.__require = function req(fileUrl = import.meta.url) {
         lastMessage?.message?.imageMessage?.caption ||
         lastMessage?.message?.videoMessage?.caption ||
         ''
-      sendLog(
-        `[MSG] type=${messages.type} from=${lastMessage?.key?.remoteJid || 'unknown'} text=${String(textPreview).slice(0, 80)}`
-      )
+      const compactText = String(textPreview || '').trim()
+      const looksLikeCommand = /^[./!#]/.test(compactText)
+      if (verboseMessageLogs || looksLikeCommand) {
+        sendLog(
+          `[MSG] type=${messages.type} from=${lastMessage?.key?.remoteJid || 'unknown'} text=${compactText.slice(0, 80)}`
+        )
+      }
 
       try {
         await Promise.race([
@@ -383,8 +467,9 @@ global.__require = function req(fileUrl = import.meta.url) {
 
     // ── Periodic DB flush ─────────────────────────────────────────────────────
     setInterval(async () => {
-      if (global.db?.data) await global.db.write().catch(() => {})
-    }, 30_000)
+      if (!global.db?.data || global.db.READ) return
+      await global.db.write().catch(() => {})
+    }, 60_000)
 
     // ── Pair-code request (only when not already registered) ──────────────────
     if (shouldPair && phoneNumber && !conn.authState.creds.registered) {
@@ -432,11 +517,14 @@ global.__require = function req(fileUrl = import.meta.url) {
 
     // ── Keep-alive ping to prevent connection timeout ────────────────────────────
     const keepAliveInterval = setInterval(async () => {
+      if (!conn?.user?.id || !isOpen || presenceInFlight) return
       try {
-        if (conn?.user?.id && isOpen) {
-          await conn.sendPresenceUpdate('available')
-          keepAliveFailures = 0
-          lastKeepAliveOk = Date.now()
+        presenceInFlight = true
+        await conn.sendPresenceUpdate('available')
+        keepAliveFailures = 0
+        keepAliveSuccessCount += 1
+        lastKeepAliveOk = Date.now()
+        if (verboseKeepAliveLogs || keepAliveSuccessCount % 12 === 0) {
           sendLog('Keep-alive ping sent')
         }
       } catch (e) {
@@ -446,17 +534,19 @@ global.__require = function req(fileUrl = import.meta.url) {
           sendLog('Keep-alive failed 3 times; restarting worker for recovery')
           process.exit(101)
         }
+      } finally {
+        presenceInFlight = false
       }
-    }, 25000) // Ping every 25 seconds to stay well within the ~2min timeout
+    }, 45000) // Ping every 45s to reduce overhead while staying safe
 
     const healthInterval = setInterval(() => {
       if (!isOpen) return
       const staleMs = Date.now() - lastKeepAliveOk
-      if (staleMs > 120000) {
-        sendLog('No successful keep-alive for >120s; restarting worker')
+      if (staleMs > 180000) {
+        sendLog('No successful keep-alive for >180s; restarting worker')
         process.exit(101)
       }
-    }, 30000)
+    }, 45000)
   } catch (error) {
     console.error(`[WORKER] FATAL: ${error.message}`)
     console.error(error.stack)

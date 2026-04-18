@@ -1,3 +1,34 @@
+
+const MENU_BOLD_MAP = {'A':'𝐀', 'B':'𝐁', 'C':'𝐂', 'D':'𝐃', 'E':'𝐄', 'F':'𝐅', 'G':'𝐆', 'H':'𝐇', 'I':'𝐈', 'J':'𝐉', 'K':'𝐊', 'L':'𝐋', 'M':'𝐌', 'N':'𝐍', 'O':'𝐎', 'P':'𝐏', 'Q':'𝐐', 'R':'𝐑', 'S':'𝐒', 'T':'𝐓', 'U':'𝐔', 'V':'𝐕', 'W':'𝐖', 'X':'𝐗', 'Y':'𝐘', 'Z':'𝐙', 'a':'𝐚', 'b':'𝐛', 'c':'𝐜', 'd':'𝐝', 'e':'𝐞', 'f':'𝐟', 'g':'𝐠', 'h':'𝐡', 'i':'𝐢', 'j':'𝐣', 'k':'𝐤', 'l':'𝐥', 'm':'𝐦', 'n':'𝐧', 'o':'𝐨', 'p':'𝐩', 'q':'𝐪', 'r':'𝐫', 's':'𝐬', 't':'𝐭', 'u':'𝐮', 'v':'𝐯', 'w':'𝐰', 'x':'𝐱', 'y':'𝐲', 'z':'𝐳', '0':'𝟎', '1':'𝟏', '2':'𝟐', '3':'𝟑', '4':'𝟒', '5':'𝟓', '6':'𝟔', '7':'𝟕', '8':'𝟖', '9':'𝟗'}
+
+function toBoldMenuToken(token = '') {
+  return String(token)
+    .split('')
+    .map(ch => MENU_BOLD_MAP[ch] || ch)
+    .join('')
+}
+
+function styleMenuCommands(text = '', usedPrefix = '.') {
+  return String(text).replace(/\*([^*]+)\*/g, (_m, token) => {
+    const trimmed = token.trim()
+    const plain = trimmed.replace(/^[^a-z0-9]+/i, '')
+    if (!plain || plain !== plain.toLowerCase() || !/^[a-z0-9][a-z0-9_\/-]*$/.test(plain)) return `*${token}*`
+    return `*${usedPrefix}${toBoldMenuToken(plain)}*`
+  })
+}
+
+const MENU_NEWSLETTER_INFO = {
+  contextInfo: {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: '120363276154401733@newsletter',
+      newsletterName: 'ARCHIE-MD BOT',
+      serverMessageId: 143,
+    },
+  },
+}
+
 let handler = async (m, { conn, usedPrefix, command }) => {
   let who = m.quoted
     ? m.quoted.sender
@@ -763,7 +794,15 @@ lkr=`
       lkr = `Invalid command. Type ${usedPrefix}list to see available options.`
   }
 
-  conn.sendFile(m.chat, pp, 'perfil.jpg', lkr, m, false, { mentions: [who] })
+  lkr = styleMenuCommands(lkr, usedPrefix)
+
+  conn.sendFile(m.chat, pp, 'perfil.jpg', lkr, m, false, {
+    mentions: [who],
+    contextInfo: {
+      ...MENU_NEWSLETTER_INFO.contextInfo,
+      mentionedJid: [who],
+    },
+  })
 
   let done = '👍'
   m.react(done)

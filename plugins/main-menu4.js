@@ -1,4 +1,4 @@
-/* import { createHash } from 'crypto'
+ import { createHash } from 'crypto'
 import PhoneNumber from 'awesome-phonenumber'
 import { canLevelUp, xpRange } from '../lib/levelling.js'
 import fetch from 'node-fetch'
@@ -8,9 +8,41 @@ import moment from 'moment-timezone'
 import { promises } from 'fs'
 import { join } from 'path'
 const OwnerName = process.env.OWNER_NAME || 'QASIM ALI';
+const BOTNAME = process.env.BOTNAME || 'ARCHIE-MD-WEB-BOT';
 const timeZone = process.env.TIME_ZONE || 'Asia/Karachi';
 const time = moment.tz(timeZone).format('HH')
 let wib = moment.tz(timeZone).format('HH:mm:ss')
+
+
+const MENU_BOLD_MAP = {'A':'𝐀', 'B':'𝐁', 'C':'𝐂', 'D':'𝐃', 'E':'𝐄', 'F':'𝐅', 'G':'𝐆', 'H':'𝐇', 'I':'𝐈', 'J':'𝐉', 'K':'𝐊', 'L':'𝐋', 'M':'𝐌', 'N':'𝐍', 'O':'𝐎', 'P':'𝐏', 'Q':'𝐐', 'R':'𝐑', 'S':'𝐒', 'T':'𝐓', 'U':'𝐔', 'V':'𝐕', 'W':'𝐖', 'X':'𝐗', 'Y':'𝐘', 'Z':'𝐙', 'a':'𝐚', 'b':'𝐛', 'c':'𝐜', 'd':'𝐝', 'e':'𝐞', 'f':'𝐟', 'g':'𝐠', 'h':'𝐡', 'i':'𝐢', 'j':'𝐣', 'k':'𝐤', 'l':'𝐥', 'm':'𝐦', 'n':'𝐧', 'o':'𝐨', 'p':'𝐩', 'q':'𝐪', 'r':'𝐫', 's':'𝐬', 't':'𝐭', 'u':'𝐮', 'v':'𝐯', 'w':'𝐰', 'x':'𝐱', 'y':'𝐲', 'z':'𝐳', '0':'𝟎', '1':'𝟏', '2':'𝟐', '3':'𝟑', '4':'𝟒', '5':'𝟓', '6':'𝟔', '7':'𝟕', '8':'𝟖', '9':'𝟗'}
+
+function toBoldMenuToken(token = '') {
+  return String(token)
+    .split('')
+    .map(ch => MENU_BOLD_MAP[ch] || ch)
+    .join('')
+}
+
+function styleMenuCommands(text = '', usedPrefix = '.') {
+  return String(text).replace(/\*([^*]+)\*/g, (_m, token) => {
+    const trimmed = token.trim()
+    const plain = trimmed.replace(/^[^a-z0-9]+/i, '')
+    if (!plain || plain !== plain.toLowerCase() || !/^[a-z0-9][a-z0-9_\/-]*$/.test(plain)) return `*${token}*`
+    return `*${usedPrefix}${toBoldMenuToken(plain)}*`
+  })
+}
+
+const MENU_NEWSLETTER_INFO = {
+  contextInfo: {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: '120363276154401733@newsletter',
+      newsletterName: 'ARCHIE-MD BOT',
+      serverMessageId: 143,
+    },
+  },
+}
 //import db from '../lib/database.js'
 
 let handler = async (m, { conn, usedPrefix, command }) => {
@@ -59,7 +91,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
 ╭─┴❍「 *BOT STATUS* 」❍
 ├• 📆  *Date:* ${date}
 ├• ⏲️  *Time:* ${wib}
-├• 🤡  *Bot:* ${botname} 
+├• 🤡  *Bot:* ${BOTNAME} 
 ├• 📣  *Prefix:* ${usedPrefix} 
 ├• 🕓  *Uptime:* ${uptime}
 ├• 💌  *Database:* ${rtotalreg} of ${totaluser} 
@@ -671,10 +703,18 @@ let handler = async (m, { conn, usedPrefix, command }) => {
 ◈ • *ytcomment <comment>*
 ╰───★─☆─♪♪─❍
 
-💡 *_Remember, when in doubt, use ${usedPrefix}listmenu or ${usedPrefix}help It's like my magic spell book!_* 💡
 `
 
-  conn.sendFile(m.chat, pp, 'perfil.jpg', str, m, null, rpyt)
+  str = styleMenuCommands(str, usedPrefix)
+
+  conn.sendFile(m.chat, pp, 'perfil.jpg', str, m, null, {
+    ...MENU_NEWSLETTER_INFO,
+    mentions: [m.sender],
+    contextInfo: {
+      ...MENU_NEWSLETTER_INFO.contextInfo,
+      mentionedJid: [m.sender],
+    },
+  })
   m.react(done)
 }
 handler.help = ['main']
@@ -757,4 +797,3 @@ const quotes = [
   "I'm not saying I'm Spider-Man. I'm just saying no one has ever seen me and Spider-Man in the same room together.",
   "I'm not saying I'm a superhero. I'm just saying no one has ever seen me and a superhero in the same room together.",
 ]
-*/
