@@ -10,16 +10,17 @@ const defaultOwner = '923444844060';
 
 
 // Check for the OWNERS environment variable; if not found, use the default
-const ownervb = process.env.OWNERS || process.env.OWNER_NUMBER || '' ; // put your number here
+const ownervb = process.env.OWNERS || process.env.OWNER_NUMBER || defaultOwner; // put your number here
 
-const ownerlist = ownervb.split(';');
+const ownerlist = ownervb.split(';').map(v => v.trim()).filter(Boolean);
 
 global.owner = [];
 for (let i = 0; i < ownerlist.length; i++) {
     global.owner.push([ownerlist[i], true]);
 }
 //
-global.botname = process.env.BOTNAME || 'MEGA-AI';
+global.botname = process.env.BOTNAME || 'ARCHIE-MD-WEB-BOT';
+global.ownername = process.env.OWNER_NAME || 'ARCHIE TECH NEXUS';
 global.pairingNumber = process.env.BOT_NUMBER || '' ;  // put your number here
 global.SESSION_ID = process.env.SESSION_ID || '' ;  // put your session id here
 
@@ -72,17 +73,17 @@ global.APIKeys = {
 }
 
 // Sticker WM
-global.premium = 'true'
-global.packname = 'MEGA-AI'
-global.author = 'GlobalTechInfo'
+global.premium = true
+global.packname = 'ARCHIE-MD-WEB-BOT'
+global.author = 'ARCHIE TECH NEXUS'
 global.menuvid = 'https://i.imgur.com/2U2K9YA.mp4'
-global.igfg = ' Follow on Instagram\nhttps://www.instagram.com/global.techinfo'
+global.igfg = 'Follow on Instagram\nhttps://www.instagram.com/archie.technexus'
 global.dygp = 'https://whatsapp.com/channel/0029VagJIAr3bbVBCpEkAM07'
-global.fgsc = 'https://github.com/GlobalTechInfo/MEGA-AI'
-global.fgyt = 'https://youtube.com/@GlobalTechInfo'
-global.fgpyp = 'https://youtube.com/@GlobalTechInfo'
-global.fglog = 'https://i.ibb.co/G2dh9cB/qasim.jpg'
-global.thumb = fs.readFileSync('./assets/A.jpg')
+global.fgsc = 'https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT'
+global.fgyt = 'https://youtube.com/@ARCHIETECHNEXUS'
+global.fgpyp = 'https://youtube.com/@ARCHIETECHNEXUS'
+global.fglog = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg'
+global.thumb = fs.existsSync('./assets/A.jpg') ? fs.readFileSync('./assets/A.jpg') : Buffer.alloc(0)
 
 global.wait = '⏳'
 global.rwait = '⏳'
@@ -92,7 +93,7 @@ global.error = '❌'
 global.xmoji = '🤩'
 
 global.multiplier = 69
-global.maxwarn = '3'
+global.maxwarn = 3
 
 let file = fileURLToPath(import.meta.url)
 watchFile(file, () => {

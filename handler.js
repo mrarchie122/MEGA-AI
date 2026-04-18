@@ -1,11 +1,11 @@
-import { smsg } from './lib/simple.js';
-import { format } from 'util';
-import { fileURLToPath } from 'url';
-import path, { join } from 'path';
-import { unwatchFile, watchFile } from 'fs';
-import chalk from 'chalk';
-import fetch from 'node-fetch';
-import Pino from 'pino';
+import { smsg } from './lib/simple.js'
+import { format } from 'util'
+import { fileURLToPath } from 'url'
+import path, { join } from 'path'
+import { unwatchFile, watchFile } from 'fs'
+import chalk from 'chalk'
+import fetch from 'node-fetch'
+import Pino from 'pino'
 /**
  * @type {import("@whiskeysockets/baileys")}
  */
@@ -19,29 +19,38 @@ const delay = ms =>
     }, ms)
   )
 
-/** 
+const withTimeout = async (promise, ms, label) => {
+  let timer
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/**
  * Handle messages upsert
  * @param {import("@whiskeysockets/baileys").BaileysEventMap<unknown>["messages.upsert"]} groupsUpdate
  */
-const { getAggregateVotesInPollMessage, makeInMemoryStore } = await (
-  await import('@whiskeysockets/baileys')
-).default
-const store = makeInMemoryStore({
-  logger: Pino().child({
-    level: 'fatal',
-    stream: 'store',
-  }),
-})
+const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys')
 export async function handler(chatUpdate) {
+  const conn = this
+  const opts = global.opts || {}
   this.msgqueque = this.msgqueque || []
   if (!chatUpdate) return
   this.pushMessage(chatUpdate.messages).catch(console.error)
   let m = chatUpdate.messages[chatUpdate.messages.length - 1]
   if (!m) return
-  if (global.db.data == null) await global.loadDatabase()
+  if (global.db.data == null) {
+    await global.loadDatabase()
+  }
   try {
     m = smsg(this, m) || m
-    if (!m) return
     m.exp = 0
     m.credit = false
     m.bank = false
@@ -71,21 +80,21 @@ export async function handler(chatUpdate) {
         if (!isNumber(user.level)) user.level = 0
         if (!('role' in user)) user.role = 'Tadpole'
         if (!('autolevelup' in user)) user.autolevelup = false
-           /*
+        /*
    Do Not Modify this Section ❌  👇👇
    Else Relationship Features Will Not Work 😔
    */
-   if (!('lover' in user)) user.lover = ''
-   if (!('exlover' in user)) user.exlover = ''
-   if (!('crush' in user)) user.crush = ''
-   if (!isNumber(user.excount)) user.excount = 0
+        if (!('lover' in user)) user.lover = ''
+        if (!('exlover' in user)) user.exlover = ''
+        if (!('crush' in user)) user.crush = ''
+        if (!isNumber(user.excount)) user.excount = 0
       } else {
         global.db.data.users[m.sender] = {
-        lover: '',
-        exlover: '',
-        crush: '',
-        excount: 0,
-   /*
+          lover: '',
+          exlover: '',
+          crush: '',
+          excount: 0,
+          /*
    Do Not Modify this Section ❌  ☝️☝️
    Else Relationship Features Will Not Work 😔
    */
@@ -153,8 +162,9 @@ export async function handler(chatUpdate) {
           chatbot: false,
         }
 
-      let settings = global.db.data.settings[this.user.jid]
-      if (typeof settings !== 'object') global.db.data.settings[this.user.jid] = {}
+      const botJid = this.user?.id || this.user?.jid || conn.user?.id || 'bot'
+      let settings = global.db.data.settings[botJid]
+      if (typeof settings !== 'object') global.db.data.settings[botJid] = {}
       if (settings) {
         if (!('self' in settings)) settings.self = false
         if (!('autoread' in settings)) settings.autoread = false
@@ -162,7 +172,7 @@ export async function handler(chatUpdate) {
         if (!('restartDB' in settings)) settings.restartDB = 0
         if (!('status' in settings)) settings.status = 0
       } else
-        global.db.data.settings[this.user.jid] = {
+        global.db.data.settings[botJid] = {
           self: false,
           autoread: false,
           restrict: false,
@@ -179,7 +189,7 @@ export async function handler(chatUpdate) {
     if (typeof m.text !== 'string') m.text = ''
 
     const isROwner = [
-      conn.decodeJid(global.conn.user.id),
+      conn.decodeJid(conn.user?.id || ''),
       ...global.owner.map(([number]) => number),
     ]
       .map(v => v.replace(/[^0-9]/g, '') + '@s.whatsapp.net')
@@ -197,15 +207,32 @@ export async function handler(chatUpdate) {
         time = 1000 * 5
       const previousID = queque[queque.length - 1]
       queque.push(m.id || m.key.id)
-      setInterval(async function () {
-        if (queque.indexOf(previousID) === -1) clearInterval(this)
-        await delay(time)
-      }, time)
+      if (previousID) {
+        await new Promise(resolve => {
+          const wait = setInterval(
+            () => {
+              if (queque.indexOf(previousID) === -1) {
+                clearInterval(wait)
+                resolve(true)
+              }
+            },
+            Math.max(250, Math.floor(time / 10))
+          )
+        })
+      }
     }
-    if (process.env.MODE && process.env.MODE.toLowerCase() === 'private' && !(isROwner || isOwner))
+    const isManagedSessionRuntime = Boolean(process.env.SESSION_ID)
+    if (
+      process.env.MODE &&
+      process.env.MODE.toLowerCase() === 'private' &&
+      !isManagedSessionRuntime &&
+      !(isROwner || isOwner)
+    )
       return
 
-    if (m.isBaileys) return
+    // Ignore bot-originated transport echoes, but still process valid incoming commands
+    // that can carry Baileys-like IDs on some multi-device sessions.
+    if (m.isBaileys && m.fromMe) return
     m.exp += Math.ceil(Math.random() * 10)
 
     let usedPrefix
@@ -218,7 +245,8 @@ export async function handler(chatUpdate) {
     const participants = (m.isGroup ? groupMetadata.participants : []) || []
     const user = (m.isGroup ? participants.find(u => conn.decodeJid(u.id) === m.sender) : {}) || {} // User Data
     const bot =
-      (m.isGroup ? participants.find(u => conn.decodeJid(u.id) == conn.user.jid) : {}) || {} // Your Data
+      (m.isGroup ? participants.find(u => conn.decodeJid(u.id) === (conn.user?.id || '')) : {}) ||
+      {} // Your Data
     const isRAdmin = user?.admin == 'superadmin' || false
     const isAdmin = isRAdmin || user?.admin == 'admin' || false // Is User Admin?
     const isBotAdmin = bot?.admin || false // Are you Admin?
@@ -231,11 +259,15 @@ export async function handler(chatUpdate) {
       const __filename = join(___dirname, name)
       if (typeof plugin.all === 'function') {
         try {
-          await plugin.all.call(this, m, {
-            chatUpdate,
-            __dirname: ___dirname,
-            __filename,
-          })
+          await withTimeout(
+            plugin.all.call(this, m, {
+              chatUpdate,
+              __dirname: ___dirname,
+              __filename,
+            }),
+            8000,
+            `plugin.all ${name}`
+          )
         } catch (e) {
           // if (typeof e === "string") continue
           console.error(e)
@@ -262,6 +294,7 @@ export async function handler(chatUpdate) {
         : conn.prefix
           ? conn.prefix
           : global.prefix
+
       let match = (
         _prefix instanceof RegExp // RegExp Mode?
           ? [[_prefix.exec(m.text), _prefix]]
@@ -278,8 +311,8 @@ export async function handler(chatUpdate) {
               : [[[], new RegExp()]]
       ).find(p => p[1])
       if (typeof plugin.before === 'function') {
-        if (
-          await plugin.before.call(this, m, {
+        const beforeHandled = await withTimeout(
+          plugin.before.call(this, m, {
             match,
             conn: this,
             participants,
@@ -295,8 +328,11 @@ export async function handler(chatUpdate) {
             chatUpdate,
             __dirname: ___dirname,
             __filename,
-          })
+          }),
+          8000,
+          `plugin.before ${name}`
         )
+        if (beforeHandled)
           continue
       }
       if (typeof plugin !== 'function') continue
@@ -421,7 +457,9 @@ export async function handler(chatUpdate) {
           __filename,
         }
         try {
-          await plugin.call(this, m, extra)
+          console.log(`[CMD] ${usedPrefix}${command} -> ${name} from ${m.sender}`)
+          await withTimeout(plugin.call(this, m, extra), 30000, `command ${name}`)
+          console.log(`[CMD] OK ${usedPrefix}${command} -> ${name}`)
           if (!isPrems) m.credit = m.credit || plugin.credit || false
         } catch (e) {
           // Error occured
@@ -429,8 +467,9 @@ export async function handler(chatUpdate) {
           console.error(e)
           if (e) {
             let text = format(e)
+            const escapeRegExp = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
             for (let key of Object.values(global.APIKeys))
-              text = text.replace(new RegExp(key, 'g'), '#HIDDEN#')
+              if (key) text = text.replace(new RegExp(escapeRegExp(String(key)), 'g'), '#HIDDEN#')
             if (e.name)
               for (let [jid] of global.owner.filter(
                 ([number, _, isDeveloper]) => isDeveloper && number
@@ -504,7 +543,7 @@ export async function handler(chatUpdate) {
     try {
       if (!opts['noprint']) await (await import('./lib/print.js')).default(m, this)
     } catch (e) {
-      console.log(m, m.quoted, e)
+      console.error('[PRINT] Logger skipped:', e?.message || e)
     }
     if (process.env.autoRead) await conn.readMessages([m.key])
     if (process.env.statusview && m.key.remoteJid === 'status@broadcast')
@@ -541,8 +580,8 @@ export async function participantsUpdate({ id, participants, action }) {
             ppgp = await this.profilePictureUrl(id, 'image')
           } catch (error) {
             console.error(`Error retrieving profile picture: ${error}`)
-            pp = 'https://i.ibb.co/9HY4wjz/a4c0b1af253197d4837ff6760d5b81c0.jpg' // Assign default image URL
-            ppgp = 'https://i.ibb.co/9HY4wjz/a4c0b1af253197d4837ff6760d5b81c0.jpg' // Assign default image URL
+            pp = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg' // Assign default image URL
+            ppgp = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg' // Assign default image URL
           } finally {
             let text = (chat.sWelcome || this.welcome || conn.welcome || 'Welcome, @user')
               .replace('@group', await this.getName(id))
@@ -563,7 +602,7 @@ export async function participantsUpdate({ id, participants, action }) {
             )}`
 
             try {
-              const welcomeUrl = 'https://i.imgur.com/mxFDDcm.jpeg';
+              const welcomeUrl = 'https://i.imgur.com/mxFDDcm.jpeg'
               let welcomeResponse = await fetch(welcomeUrl)
               let welcomeBuffer = await welcomeResponse.buffer()
 
@@ -599,8 +638,8 @@ export async function participantsUpdate({ id, participants, action }) {
             ppgp = await this.profilePictureUrl(id, 'image')
           } catch (error) {
             console.error(`Error retrieving profile picture: ${error}`)
-            pp = 'https://i.ibb.co/9HY4wjz/a4c0b1af253197d4837ff6760d5b81c0.jpg' // Assign default image URL
-            ppgp = 'https://i.ibb.co/9HY4wjz/a4c0b1af253197d4837ff6760d5b81c0.jpg' // Assign default image URL
+            pp = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg' // Assign default image URL
+            ppgp = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg' // Assign default image URL
           } finally {
             let text = (chat.sBye || this.bye || conn.bye || 'HELLO, @user').replace(
               '@user',
@@ -621,7 +660,7 @@ export async function participantsUpdate({ id, participants, action }) {
             )}`
 
             try {
-              const leaveUrl = 'https://i.imgur.com/rO8hlAQ.jpeg';
+              const leaveUrl = 'https://i.imgur.com/rO8hlAQ.jpeg'
               let leaveResponse = await fetch(leaveUrl)
               let leaveBuffer = await leaveResponse.buffer()
 
