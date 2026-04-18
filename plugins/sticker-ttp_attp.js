@@ -1,13 +1,12 @@
 import fetch from 'node-fetch'
-import { sticker, addExif } from '../lib/sticker.js'
-import { Sticker } from 'wa-sticker-formatter'
+import { sticker as stickerHelper, addExif } from '../lib/sticker.js'
 let handler = async (m, { conn, text, args, usedPrefix, command }) => {
   if (!text) throw `*[❗] where is the text*\n\n*—◉ 𝙴xample:*\n*◉ ${usedPrefix + command} Qasim*`
   let teks = encodeURI(text)
 
   if (command == 'attp') {
     let a1 = await (await fetch(`https://api.erdwpe.com/api/maker/attp?text=${teks}`)).buffer()
-    let a2 = await createSticker(a1, false, global.packname, global.author)
+    let a2 = await stickerHelper(a1, false, global.packname, global.author)
     conn.sendFile(m.chat, a2, 'sticker.webp', '', m, { asSticker: true })
   }
 
@@ -92,10 +91,6 @@ handler.command = handler.help = ['ttp', 'ttp2', 'ttp3', 'ttp4', 'ttp5', 'attp',
 handler.tags = ['sticker']
 export default handler
 
-async function createSticker(img, url, packName, authorName, quality) {
-  let stickerMetadata = { type: 'full', pack: packName, author: authorName, quality }
-  return new Sticker(img ? img : url, stickerMetadata).toBuffer()
-}
 async function mp4ToWebp(file, stickerMetadata) {
   if (stickerMetadata) {
     if (!stickerMetadata.pack) stickerMetadata.pack = '‎'

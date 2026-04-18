@@ -13,7 +13,8 @@
         "node": ">=20.0.0"
     },
     "scripts": {
-        "start": "node index.js",
+            "start": "node src/server.js",
+            "start:legacy": "node index.js",
         "test": "node bot.js"
     },
     "keywords": [
@@ -28,16 +29,16 @@
         "MD",
         "baileys-md"
     ],
-    "homepage": "https://github.com/GlobalTechInfo/MEGA-AI",
+    "homepage": "https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT",
     "author": {
-        "name": "GlobalTechInfo"
+        "name": "ARCHIE TECH NEXUS"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/GlobalTechInfo/MEGA-AI.git"
+        "url": "git+https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT.git"
     },
     "bugs": {
-        "url": "https://github.com/GlobalTechInfo/MEGA-AI/issues"
+        "url": "https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT/issues"
     },
     "license": "Apache-2.0",
     "dependencies": {
@@ -86,7 +87,7 @@
         "mime-types": "^2.1.35",
         "moment-timezone": "^0.5.37",
         "mongoose": "^8.8.3",
-        "nayan-videos-downloader": "^0.0.9",
+        "nayan-videos-downloader": "0.0.1-security",
         "node-cache": "^5.1.2",
         "node-fetch": "^3.3.1",
         "node-gtts": "^2.0.2",

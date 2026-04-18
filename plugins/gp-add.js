@@ -3,7 +3,8 @@ import fetch from 'node-fetch'
 /**
  * @type {import('@whiskeysockets/baileys')}
  */
-const { getBinaryNodeChild, getBinaryNodeChildren } = (await import('@whiskeysockets/baileys')).default
+const baileys = await import('@whiskeysockets/baileys')
+const { getBinaryNodeChild, getBinaryNodeChildren } = baileys
 let handler = async (m, { conn, text, participants }) => {
     let _participants = participants.map(user => user.id)
     let users = (await Promise.all(

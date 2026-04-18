@@ -4,7 +4,7 @@ let handler = async (m, { conn, usedprefix }) => {
     : m.mentionedJid && m.mentionedJid[0]
       ? m.mentionedJid[0]
       : m.fromMe
-        ? conn.user.jid
+        ? (conn.user?.id || '')
         : m.sender
   conn.sendFile(
     m.chat,

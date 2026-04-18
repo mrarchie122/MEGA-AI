@@ -1,5 +1,4 @@
-import { sticker, addExif } from '../lib/sticker.js'
-import { Sticker } from 'wa-sticker-formatter'
+import { sticker as stickerHelper, addExif } from '../lib/sticker.js'
 import fetch from 'node-fetch'
 
 let handler = m => m
@@ -17,7 +16,7 @@ handler.all = async function (m) {
     if (/image/g.test(mime)) {
       let img = await q.download?.()
       if (!img) return
-      stiker = await createSticker(img, false, packname || global.packname, author || global.author)
+      stiker = await stickerHelper(img, false, packname || global.packname, author || global.author)
       //stiker = await sticker(img, false, packname, author)
     } else if (/video/g.test(mime)) {
       //if (/video/g.test(mime)) if ((q.msg || q).seconds > 8) return await this.sendButton(m.chat, '*Send video of 7 seconds*', wm, [['DEACTIVE AUTOSTICKER', '/disable autosticker']], m)
@@ -25,19 +24,19 @@ handler.all = async function (m) {
         if ((q.msg || q).seconds > 8)
           return await this.sendReply(m.chat, { text: '*Send video of 7 seconds*' }, m.sender)
       let img = await q.download()
-      if (!img) return
+        stiker = await stickerHelper(img, false, packname || global.packname, author || global.author)
       stiker = await mp4ToWebp(img, {
         pack: packname || global.packname,
         author: author || global.author,
       })
       //stiker = await sticker(img, false, packname, author)
     } else if (m.text.split(/\n| /i)[0]) {
-      if (isUrl(m.text)) stiker = await createSticker(false, args[0], '', author, 20)
+      if (isUrl(m.text)) stiker = await stickerHelper(false, args[0], '', author, 20)
       else return
     }
     if (stiker) {
       let img = await (
-        await fetch('https://i.ibb.co/G2dh9cB/qasim.jpg')
+        await fetch('https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg')
       ).buffer()
       await this.sendFile(m.chat, stiker, 'error.jpg', null, m, false, {
         contextInfo: { showAdAttribution: true },
@@ -57,10 +56,6 @@ const isUrl = text => {
   )
 }
 
-async function createSticker(img, url, packName, authorName, quality) {
-  let stickerMetadata = { type: 'full', pack: packName, author: authorName, quality }
-  return new Sticker(img ? img : url, stickerMetadata).toBuffer()
-}
 async function mp4ToWebp(file, stickerMetadata) {
   if (stickerMetadata) {
     if (!stickerMetadata.pack) stickerMetadata.pack = '‎'
@@ -69,8 +64,9 @@ async function mp4ToWebp(file, stickerMetadata) {
   } else if (!stickerMetadata) {
     stickerMetadata = { pack: '‎', author: '‎', crop: false }
   }
-  let getBase64 = file.toString('base64')
-  const Format = {
+
+  const getBase64 = file.toString('base64')
+  const formatPayload = {
     file: `data:video/mp4;base64,${getBase64}`,
     processOptions: {
       crop: stickerMetadata?.crop,
@@ -109,18 +105,20 @@ async function mp4ToWebp(file, stickerMetadata) {
         '--disable-offline-load-stale-cache',
         '--disk-cache-size=0',
       ],
-      executablePath: 'C:\\\\Program Files (x86)\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe',
+      executablePath: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
       skipBrokenMethodsCheck: true,
       stickerServerEndpoint: true,
     },
   }
-  let res = await fetch('https://sticker-api.openwa.dev/convertMp4BufferToWebpDataUrl', {
+
+  const res = await fetch('https://sticker-api.openwa.dev/convertMp4BufferToWebpDataUrl', {
     method: 'post',
     headers: {
       Accept: 'application/json, text/plain, /',
       'Content-Type': 'application/json;charset=utf-8',
     },
-    body: JSON.stringify(Format),
+    body: JSON.stringify(formatPayload),
   })
+
   return Buffer.from((await res.text()).split(';base64,')[1], 'base64')
 }

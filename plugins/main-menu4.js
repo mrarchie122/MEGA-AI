@@ -25,7 +25,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     : m.mentionedJid && m.mentionedJid[0]
       ? m.mentionedJid[0]
       : m.fromMe
-        ? conn.user.jid
+        ? (conn.user?.id || '')
         : m.sender
   if (!(who in global.db.data.users)) throw `✳️ The user is not found in my database`
   let pp = './assets/A.jpg'

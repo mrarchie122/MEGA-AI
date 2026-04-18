@@ -1,7 +1,7 @@
 import axios from 'axios'
 import jimp from 'jimp'
 import FormData from 'form-data'
-import { Sticker, createSticker, StickerTypes } from 'wa-sticker-formatter'
+import { sticker as stickerHelper } from '../lib/sticker.js'
 
 async function GetBuffer(url) {
   return new Promise(async (resolve, reject) => {
@@ -123,17 +123,9 @@ let handler = async (m, { conn, usedPrefix, command }) => {
           'The operation was successful♥  >//<',
           m
         )
-        let name = await conn.getName(m.sender),
-          sticker = new Sticker(response.download.head, {
-            pack: global.packname,
-            author: name,
-            type: StickerTypes.FULL,
-            categories: ['🤩', '🎉'],
-            id: randomId(),
-            quality: 100,
-            background: '#00000000',
-          })
-        conn.sendMessage(m.chat, await sticker.toMessage(), { quoted: m })
+        let name = await conn.getName(m.sender)
+        const stickerBuffer = await stickerHelper(response.download.head, false, global.packname, name)
+        await conn.sendFile(m.chat, stickerBuffer, 'sticker.webp', '', m, { asSticker: true })
       } else {
         m.reply(
           'Excuse me my friend, the picture does not reveal a face, please send a picture in which the face is exposed and visible.'

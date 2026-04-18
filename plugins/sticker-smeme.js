@@ -1,8 +1,7 @@
 import uploadFile from '../lib/uploadFile.js';
 import uploadImage from '../lib/uploadImage.js';
 import { webp2png } from '../lib/webp2mp4.js';
-import { Sticker, StickerTypes } from 'wa-sticker-formatter';
-import { sticker } from '../lib/sticker.js';
+import { sticker as stickerHelper } from '../lib/sticker.js';
 
 let handler = async (m, { conn, args, text, usedPrefix, command }) => {
   let out;
@@ -10,7 +9,7 @@ let handler = async (m, { conn, args, text, usedPrefix, command }) => {
     m.mentionedJid && m.mentionedJid[0]
       ? m.mentionedJid[0]
       : m.fromMe
-      ? conn.user.jid
+      ? (conn.user?.id || '')
       : m.sender;
   let name = await conn.getName(who);
   let [topText, bottomText] = text.split(/[^\w\s]/g);
@@ -42,13 +41,13 @@ let handler = async (m, { conn, args, text, usedPrefix, command }) => {
 
   try {
     if (/webp/g.test(mime)) {
-      out = await createSticker(meme + (await webp2png(img)), false, global.packname, name, 60);
+      out = await stickerHelper(meme + (await webp2png(img)), false, global.packname, name, 60);
     } else if (/image/g.test(mime)) {
-      out = await createSticker(meme + (await uploadImage(img)), false, global.packname, name, 60);
+      out = await stickerHelper(meme + (await uploadImage(img)), false, global.packname, name, 60);
     } else if (/video/g.test(mime)) {
-      out = await sticker(meme + (await uploadFile(img)), false, global.packname, name);
+      out = await stickerHelper(meme + (await uploadFile(img)), false, global.packname, name);
     } else if (/gif/g.test(mime) || /viewOnce/g.test(mime)) {
-      out = await createSticker(meme + (await uploadFile(img)), false, global.packname, name, 60);
+      out = await stickerHelper(meme + (await uploadFile(img)), false, global.packname, name, 60);
     }
 
     if (out) {
@@ -77,22 +76,3 @@ const isUrl = text => {
   );
 };
 
-async function createSticker(img, url, packName, authorName, quality) {
-  let stickerMetadata = {
-    type: StickerTypes.FULL,
-    pack: packName,
-    author: authorName,
-    quality,
-  };
-  return new Sticker(img ? img : url, stickerMetadata).toBuffer();
-}
-
-async function createStickerV(img, url, packName, authorName, quality) {
-  let stickerMetadata = {
-    type: StickerTypes.CROPPED,
-    pack: packName,
-    author: authorName,
-    quality,
-  };
-  return new Sticker(img ? img : url, stickerMetadata).toBuffer();
-}

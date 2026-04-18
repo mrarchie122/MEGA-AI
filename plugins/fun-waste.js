@@ -4,7 +4,7 @@ let handler = async (m, { conn }) => {
     : m.mentionedJid && m.mentionedJid[0]
       ? m.mentionedJid[0]
       : m.fromMe
-        ? conn.user.jid
+        ? (conn.user?.id || '')
         : m.sender
   let name = conn.getName(who)
   let pp = await conn.profilePictureUrl(who, 'image').catch(_ => './GURU.jpg')

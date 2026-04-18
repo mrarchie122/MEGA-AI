@@ -12,7 +12,7 @@ const handler = async (m, { conn, args, usedPrefix, command }) => {
       : m.mentionedJid && m.mentionedJid[0]
         ? m.mentionedJid[0]
         : m.fromMe
-          ? conn.user.jid
+          ? (conn.user?.id || '')
           : m.sender
     let username = conn.getName(who)
     if (!(who in global.db.data.users)) throw `✳️ The user is not found in my database`

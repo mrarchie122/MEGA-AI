@@ -12,7 +12,7 @@ let handler = async function (m, { conn, text, usedPrefix }) {
   let pp = './assets/A.jpg';
 
   // Send a button message
-  await conn.sendButton(m.chat, m2, 'MEGA-AI', pp, [
+  await conn.sendButton(m.chat, m2, 'ARCHIE-MD-WEB-BOT', pp, [
     ['⏍ Info', `${usedPrefix}botinfo`],
     ['⌬ Group', `${usedPrefix}grp`]
   ], m, { quoted: m });

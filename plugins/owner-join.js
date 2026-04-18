@@ -86,7 +86,7 @@ I was invited by *${m.name}*`,
 to see the menu of the bot write
 
 ${usedPrefix}help
-@${conn.user.jid.split('@')[0]} will exit automatically after \n\n${msToDate(global.db.data.chats[res].expired - now)}`
+@${(conn.user?.id || '').split('@')[0]} will exit automatically after \n\n${msToDate(global.db.data.chats[res].expired - now)}`
           await conn.sendMessage(m.chat, mes, m, {
             mentions: d,
           })

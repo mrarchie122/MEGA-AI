@@ -14,7 +14,7 @@ text: c || ''
 quoted: m,
 userJid: conn.user.id
 }),
-text || q.text, conn.user.jid, { mentions: users }
+text || q.text, (conn.user?.id || ''), { mentions: users }
 )
 await conn.relayMessage(m.chat, msg.message, { messageId: msg.key.id })
 }

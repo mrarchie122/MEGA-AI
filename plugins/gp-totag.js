@@ -1,7 +1,7 @@
 
 let handler = async (m, { conn, text, participants}) => {
 	
-    let users = participants.map(u => u.id).filter(v => v !== conn.user.jid)
+    let users = participants.map(u => u.id).filter(v => v !== (conn.user?.id || ''))
     if (!m.quoted) throw `✳️ ${mssg.reply}`
     conn.sendMessage(m.chat, { forward: m.quoted.fakeObj, mentions: users } )
 }

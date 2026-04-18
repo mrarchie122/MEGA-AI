@@ -8,8 +8,11 @@ services:
     links:
       - redis
     ports:
-      - "3000:3000"  
+      - "3015:3015"
     environment:
+      PORT: 3015
+      OWNER_NAME: ${OWNER_NAME}
+      BOTNAME: ${BOTNAME}
       DATABASE_URL: ${DATABASE_URL}
       SESSION_ID: ${SESSION_ID}
       REMOVEBG_KEY: ${REMOVEBG_KEY}

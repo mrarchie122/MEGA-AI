@@ -4,7 +4,7 @@
   "keywords": [
     "whatsapp Ai"
   ],
-  "repository": "https://github.com/GlobalTechInfo/MEGA-AI",
+  "repository": "https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT",
   "stack": "container",
   "env": {
     "OWNERS": {
@@ -15,7 +15,17 @@
     "BOTNAME": {
       "description": "Give your BOT a name",
       "required": true,
-      "value": "MEGA-AI"
+      "value": "ARCHIE-MD-WEB-BOT"
+    },
+    "OWNER_NAME": {
+      "description": "Owner display name",
+      "required": false,
+      "value": "ARCHIE TECH NEXUS"
+    },
+    "PORT": {
+      "description": "Web manager port",
+      "required": false,
+      "value": "3015"
     },
     "DATABASE_URL": {
       "description": "your mongodb database url",
@@ -81,11 +91,6 @@
       "description": "your time zone",
       "required": true,
       "value": "Africa/Nairobi"
-    },
-    "OWNER_NAME": {
-      "description": "your owner Name",
-      "required": false,
-      "value": ""
     },
      "REMOVEBG_KEY": {
       "description": "your Remove background api key",

@@ -1,5 +1,5 @@
 import fetch from 'node-fetch'
-import { Sticker, StickerTypes } from 'wa-sticker-formatter'
+import { sticker as stickerHelper } from '../lib/sticker.js'
 
 import fs from 'fs'
 import os from 'os'
@@ -22,13 +22,13 @@ let handler = async (m, { conn, text }) => {
       : m.mentionedJid && m.mentionedJid[0]
         ? m.mentionedJid[0]
         : m.fromMe
-          ? conn.user.jid
+          ? (conn.user?.id || '')
           : m.sender
     if (!(who in global.db.data.users)) throw '✳️ The user is not found in my database'
     
     let userPfp = await conn
       .profilePictureUrl(who, 'image')
-      .catch(_ => 'https://i.ibb.co/9HY4wjz/a4c0b1af253197d4837ff6760d5b81c0.jpg')
+      .catch(_ => 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg')
     let user = global.db.data.users[who]
     let { name } = global.db.data.users[who]
 
@@ -73,27 +73,14 @@ let handler = async (m, { conn, text }) => {
     if (!json.result || !json.result.image) {
       throw new Error('Unexpected response structure')
     }
-    function randomId() {
-      return Math.floor(100000 + Math.random() * 900000)
-    }
-
     let bufferImage = Buffer.from(json.result.image, 'base64')
 
     let tempImagePath = path.join(os.tmpdir(), 'tempImage.png')
     fs.writeFileSync(tempImagePath, bufferImage)
-    let sticker = new Sticker(tempImagePath, {
-      pack: global.packname,
-      author: name,
-      type: StickerTypes.FULL,
-      categories: ['🤩', '🎉'],
-      id: randomId(),
-      quality: 100,
-      background: '#00000000',
-    })
-
     // Send the sticker without buttons
     try {
-      await conn.sendMessage(m.chat, await sticker.toMessage())
+      const stickerBuffer = await stickerHelper(tempImagePath, false, global.packname, name)
+      await conn.sendFile(m.chat, stickerBuffer, 'quote.webp', '', m, { asSticker: true })
     } catch (stickerError) {
       console.error('Error sending sticker:', stickerError)
       m.reply('Error sending sticker. Sending image instead.')

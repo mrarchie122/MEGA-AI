@@ -4,7 +4,7 @@ import fs from 'fs';
 
 let handler = async (m, { conn, text }) => {
   // Ensure that the command is executed by the owner
-  if (conn.user.jid == conn.user.jid) {
+  if ((conn.user?.id || '') == (conn.user?.id || '')) {
     // Execute the git pull command
     let stdout = execSync('git pull' + (m.fromMe && text ? ' ' + text : ''));
     // Reload all plugins
