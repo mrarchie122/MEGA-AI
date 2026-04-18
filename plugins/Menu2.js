@@ -7,8 +7,8 @@ const { levelling } = '../lib/levelling.js'
 import moment from 'moment-timezone'
 import { promises } from 'fs'
 import { join } from 'path'
-const OwnerName = process.env.OWNER_NAME || 'QASIM ALI';
-const BOTNAME = process.env.BOTNAME || 'MEGA-AI';
+const OwnerName = process.env.OWNER_NAME || 'ARCHIE TECH NEXUS';
+const BOTNAME = process.env.BOTNAME || 'ARCHIE-MD-WEB-BOT';
 const timeZone = process.env.TIME_ZONE || 'Asia/Karachi';
 const time = moment.tz(timeZone).format('HH');
 let wib = moment.tz(timeZone).format('HH:mm:ss');
@@ -20,8 +20,17 @@ let handler = async (m, { conn, usedPrefix, command}) => {
     let date = d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
     let _uptime = process.uptime() * 1000
     let uptime = clockString(_uptime)
-let who = m.quoted ? m.quoted.sender : m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : m.fromMe ? conn.user.jid : m.sender
-if (!(who in global.db.data.users)) throw `✳️ The user is not found in my database`
+let who = m.quoted ? m.quoted.sender : m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : m.fromMe ? (conn.user?.id || '') : m.sender
+if (!(who in global.db.data.users)) {
+  global.db.data.users[who] = global.db.data.users[who] || {
+    exp: 0,
+    level: 0,
+    role: 'Tadpole',
+    registered: false,
+    name: conn.getName(who),
+    warn: 0,
+  }
+}
 let pp = './assets/A.jpg'
 let user = global.db.data.users[who]
 let { name, exp, diamond, lastclaim, registered, regTime, age, level, role, warn } = global.db.data.users[who]
@@ -50,7 +59,7 @@ let str = `
 ◈╭─┴❍「 *BOT STATUS* 」❍
 ◈├• 📆  *Date:* ${date}
 ◈├• ⏲️  *Time:* ${wib}
-◈├• 🤡  *Bot:* ${botname} 
+◈├• 🤡  *Bot:* ${BOTNAME} 
 ◈├• 📣  *Prefix:* ${usedPrefix} 
 ◈├• 🕓  *Uptime:* ${uptime}
 ◈├• 💌  *Database:* ${rtotalreg} of ${totaluser} 
@@ -89,7 +98,7 @@ let str = `
 ◈├• *ownermenu*
 ◈├• *setprivacy*
 ◈╰─♪♪─★─☆──♪♪─❍
-© *GlobalTechInfo*
+© *ARCHIE TECH NEXUS*
 
 > 💡 *_Remember, when in doubt, use ${usedPrefix}listmenu or ${usedPrefix}help It's like my magic spell book!_* 💡
 `
@@ -100,13 +109,13 @@ let str = `
     
 
 
-   conn.sendFile(m.chat, pp, 'perfil.jpg', str, m, null, canal)
-    m.react(done)
+  await conn.sendFile(m.chat, pp, 'perfil.jpg', str, m)
+  await m.react('✅')
 
 }
 handler.help = ['main']
 handler.tags = ['group']
-handler.command = ['menu', 'help'] 
+handler.command = ['menu', 'help', 'h', 'commands', 'menu2', 'help2'] 
 
 export default handler
 function clockString(ms) {

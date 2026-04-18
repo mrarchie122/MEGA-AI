@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARCHIE MD - Connect Device</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-body: #0d0d0f;
+      --bg-panel: #161619;
+      --border-color: #2b2b30;
+      --text-main: #f0f0f0;
+      --text-muted: #808088;
+      --orange: #ff8a2b;
+      --orange-focus: rgba(255, 138, 43, 0.2);
+      --green: #22c55e;
+      --green-neon: #a3e635;
+      --yellow: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+
+    /* STATS */
+    .stats-container { display: flex; gap: 1.5rem; width: 100%; max-width: 1100px; margin-bottom: 1.5rem; }
+    .stat-box { flex: 1; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; text-align: center; display: flex; flex-direction: column; gap: 0.5rem; }
+    .stat-box .value { font-size: 1.5rem; font-weight: 700; }
+    .stat-box .label { font-size: 0.75rem; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+    .text-yellow { color: var(--yellow); }
+    .text-green { color: var(--green); }
+
+    /* MAIN GRID */
+    .main-container { display: flex; gap: 1.5rem; width: 100%; max-width: 1100px; }
+    @media (max-width: 800px) { .main-container, .stats-container { flex-direction: column; } }
+
+    /* LEFT PANEL */
+    .left-panel { flex: 1; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; padding: 2rem; border-top: 2px solid var(--green); display: flex; flex-direction: column; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+    .icon-box { background: rgba(255,138,43,0.15); border: 1px solid var(--orange); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(255,138,43,0.2); }
+    .icon-box svg { stroke: var(--orange); }
+    .title-area h2 { font-size: 1.25rem; font-weight: 600; }
+    .title-area p { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    /* MODE TOGGLE */
+    .mode-toggle { display: flex; margin-bottom: 1.5rem; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+    .mode-btn { flex: 1; background: transparent; border: none; color: var(--text-muted); padding: 0.75rem 1rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; font-family: 'Inter', sans-serif; }
+    .mode-btn.active { background: var(--orange); color: #000; }
+
+    /* INPUTS */
+    .input-group { margin-bottom: 1.5rem; }
+    .input-group label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.6rem; }
+    .input-group label svg { stroke: var(--text-muted); }
+    .input-wrapper { position: relative; display: flex; align-items: center; }
+    .input-wrapper input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; color: white; font-size: 1rem; outline: none; transition: 0.2s border; font-family: 'Inter', sans-serif; }
+    .input-wrapper input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-focus); }
+    .input-wrapper .clear-btn { position: absolute; right: 1rem; background: rgba(255,255,255,0.05); border: none; color: white; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .input-wrapper .clear-btn:hover { background: rgba(255,255,255,0.1); }
+
+    /* PAIRING BOX */
+    .pairing-code-display { width: 100%; background: rgba(0,0,0,0.5); border: 1px dashed var(--orange); border-radius: 8px; text-align: center; margin-bottom: 1.5rem; display: none; padding: 10px; }
+
+    /* MAIN BUTTON */
+    .btn-main { width: 100%; background: var(--orange); color: #000; border: none; padding: 1rem; font-weight: 700; font-size: 1rem; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer; box-shadow: 0 4px 15px rgba(255,138,43,0.4); margin-bottom: 1.5rem; transition: transform 0.1s, box-shadow 0.2s; font-family: 'Inter', sans-serif; }
+    .btn-main:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,138,43,0.6); }
+    .btn-main:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .bot-actions { display: flex; gap: 1rem; }
+    .bot-actions button { flex: 1; background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); padding: 0.75rem; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; cursor: pointer; font-family: 'Inter', sans-serif; }
+    .bot-actions button:hover { background: rgba(255,255,255,0.02); color: white; }
+
+    /* TERMINAL */
+    .terminal-panel { flex: 1.2; background: #09090b; border: 1px solid var(--border-color); border-radius: 12px; display: flex; flex-direction: column; border-top: 2px solid var(--green); overflow: hidden; }
+    .terminal-header { background: #18181b; padding: 0.75rem 1rem; display: flex; align-items: center; border-bottom: 1px solid var(--border-color); }
+    .mac-dots { display: flex; gap: 6px; margin-right: auto; }
+    .mac-dots div { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ef4444; } .dot-yellow { background: #f59e0b; } .dot-green { background: #22c55e; }
+    .terminal-title { font-size: 0.75rem; color: var(--text-muted); flex: 1; text-align: center; margin-right: 50px; }
+    .terminal-content { padding: 1.5rem; font-family: 'Fira Code', Consolas, monospace; font-size: 0.85rem; color: var(--green-neon); flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; max-height: 450px; }
+    .log-line { display: flex; gap: 0.8rem; line-height: 1.4; word-break: break-all; }
+    .log-time { color: #3b82f6; white-space: nowrap; }
+    .log-icon { color: var(--orange); }
+    .log-text { color: #a3e635; }
+    .log-text.error { color: #ef4444; }
+    .log-text.info { color: #f3f4f6; }
+    .log-text.warn { color: #fcd34d; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-panel); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4b4b50; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <!-- STATS BAR -->
+  <div class="stats-container">
+    <div class="stat-box">
+      <div class="value text-yellow">328+</div>
+      <div class="label">COMMANDS</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-green" id="statSessions">0</div>
+      <div class="label">ACTIVE SESSIONS</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-yellow">&lt;0.5s</div>
+      <div class="label">RESPONSE</div>
+    </div>
+    <div class="stat-box">
+      <div class="value text-green">99.9%</div>
+      <div class="label">UPTIME</div>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <div class="header-row">
+        <div class="icon-box">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v6"/><path d="M12 18v4"/><path d="M14.93 5.07l-4.24 4.24"/><path d="M9.07 18.93l4.24-4.24"/><path d="M22 12h-6"/><path d="M8 12H2"/><path d="M18.93 9.07l-4.24 4.24"/><path d="M5.07 14.93l4.24-4.24"/>
+          </svg>
+        </div>
+        <div class="title-area">
+          <h2>Connect Device</h2>
+          <p>Link your WhatsApp instantly</p>
+        </div>
+      </div>
+
+      <!-- MODE TOGGLE -->
+      <div class="mode-toggle">
+        <button class="mode-btn" id="modeQR" onclick="setMode('qr')">📱 QR Code</button>
+        <button class="mode-btn active" id="modePair" onclick="setMode('pair')">🔑 Pair Code</button>
+      </div>
+
+      <!-- PHONE -->
+      <div class="input-group" id="phoneGroup">
+        <label>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+          Phone Number (required for Pair Code, optional for QR)
+        </label>
+        <div class="input-wrapper">
+          <input type="text" id="phoneInput" placeholder="e.g. 254712345678" onkeypress="if(event.key==='Enter') connect()" />
+          <button class="clear-btn" onclick="document.getElementById('phoneInput').value=''">×</button>
+        </div>
+      </div>
+
+      <div id="pairingCodeBox" class="pairing-code-display"></div>
+
+      <button id="mainBtn" class="btn-main" onclick="connect()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        GET PAIR CODE
+      </button>
+
+      <div class="bot-actions">
+        <button onclick="addLog('QR: WhatsApp → Linked Devices → Link a Device → Scan QR | Pair Code: Enter the 8-digit code shown', 'info')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          How to Pair
+        </button>
+        <button onclick="resetSession()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.82"/></svg>
+          Reset Session
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: TERMINAL -->
+    <div class="terminal-panel">
+      <div class="terminal-header">
+        <div class="mac-dots">
+          <div class="dot-red"></div>
+          <div class="dot-yellow"></div>
+          <div class="dot-green"></div>
+        </div>
+        <div class="terminal-title">ARCHIE MD — Live Terminal</div>
+      </div>
+      <div class="terminal-content" id="terminalGrid"></div>
+    </div>
+  </div>
+
+  <script>
+    const term         = document.getElementById('terminalGrid');
+    const mainBtn      = document.getElementById('mainBtn');
+    const phoneInput   = document.getElementById('phoneInput');
+    const pairingBox   = document.getElementById('pairingCodeBox');
+    const phoneGroup   = document.getElementById('phoneGroup');
+    const statSessions = document.getElementById('statSessions');
+
+    // Persistent client session ID stored in browser
+    let mySessionId = localStorage.getItem('archie_session_id');
+    if (!mySessionId) {
+      mySessionId = 'pub_' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem('archie_session_id', mySessionId);
+    }
+
+    let useQR = false;
+
+    // ── Mode toggle ─────────────────────────────────────────────────────────────
+    function setMode(mode) {
+      useQR = mode === 'qr';
+      document.getElementById('modeQR').classList.toggle('active', useQR);
+      document.getElementById('modePair').classList.toggle('active', !useQR);
+      pairingBox.style.display = 'none';
+      mainBtn.style.background = '';
+      mainBtn.style.color = '';
+      mainBtn.disabled = false;
+      mainBtn.innerHTML = useQR
+        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M7 17v1a3 3 0 0 0 3 3h1"/><path d="M7 10v4"/><path d="M10 10h4"/></svg> GET QR CODE'
+        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> GET PAIR CODE';
+    }
+
+    async function copyPairCode(code) {
+      try {
+        await navigator.clipboard.writeText(String(code || ''));
+        addLog('Pair code copied to clipboard.', 'info');
+      } catch {
+        addLog('Copy failed. Please copy the code manually.', 'warn');
+      }
+    }
+
+    // ── Logging ─────────────────────────────────────────────────────────────────
+    function getTime() {
+      return new Date().toLocaleTimeString('en-US', { hour12: true, hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    }
+    function addLog(text, type = 'normal') {
+      const icons   = { error: '❌', warn: '⚠️', info: 'ℹ️', normal: '⚡' };
+      const classes = { error: 'log-text error', warn: 'log-text warn', info: 'log-text info', normal: 'log-text' };
+      term.insertAdjacentHTML('beforeend', `
+        <div class="log-line">
+          <span class="log-time">${getTime()}</span>
+          <span class="log-icon">${icons[type] || '⚡'}</span>
+          <span class="${classes[type] || 'log-text'}">${text}</span>
+        </div>`);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    addLog('Connected to ARCHIE MD server', 'info');
+    addLog('Terminal online. Waiting for events...');
+    addLog(`Session ID: ${mySessionId}`, 'info');
+
+    // ── Sessions Panel ───────────────────────────────────────────────────────────
+    function renderSessions(sessions) {
+      const active = (sessions || []).filter(s => !['stopped', 'crashed', 'logged_out'].includes((s.status || '').toLowerCase())).length;
+      statSessions.textContent = active;
+    }
+
+    async function refreshSessions() {
+      try { const d = await fetch('/api/sessions').then(r => r.json()); renderSessions(d.sessions || []); }
+      catch {}
+    }
+
+    refreshSessions();
+
+    // ── Reset ────────────────────────────────────────────────────────────────────
+    async function resetSession() {
+      try {
+        await fetch(`/api/sessions/${mySessionId}`, { method: 'DELETE' });
+        addLog('Session reset — ready to reconnect.', 'warn');
+        setMode(useQR ? 'qr' : 'pair');
+      } catch (e) { addLog(`Reset failed: ${e.message}`, 'error'); }
+    }
+
+    // ── Connect ──────────────────────────────────────────────────────────────────
+    async function connect() {
+      const pno = phoneInput.value.replace(/[^0-9]/g, '');
+      if (!useQR && !pno) {
+        addLog('Pair Code mode requires a phone number!', 'error');
+        phoneInput.focus();
+        return;
+      }
+      mainBtn.disabled = true;
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg> REQUESTING...';
+      pairingBox.style.display = 'none';
+      addLog(useQR ? 'Requesting QR code...' : `Requesting pair code for +${pno}...`);
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: mySessionId, phoneNumber: pno, pairing: !useQR })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Server error');
+        addLog(`Session started — awaiting ${useQR ? 'QR scan' : 'pair code'}...`, 'info');
+      } catch (e) {
+        addLog(`Request failed: ${e.message}`, 'error');
+        setMode(useQR ? 'qr' : 'pair');
+      }
+    }
+
+    // ── SSE ──────────────────────────────────────────────────────────────────────
+    const evtSource = new EventSource('/api/events');
+    let lastStatus = null;
+
+    evtSource.onmessage = (event) => {
+      try {
+        const { type, payload: body } = JSON.parse(event.data);
+
+        if (type === 'session.update') {
+          refreshSessions();
+
+          if (body.sessionId !== mySessionId) return;
+
+          if (body.pairingCode) {
+            // Pair code received
+            pairingBox.innerHTML = `
+              <div style="text-align:center;padding:1rem">
+                <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.6rem">Enter this code in WhatsApp → Linked Devices → Link with Phone Number</div>
+                <div style="font-size:2.5rem;letter-spacing:12px;font-family:'Fira Code',monospace;color:var(--orange);font-weight:700">${body.pairingCode}</div>
+                <button onclick="copyPairCode('${body.pairingCode}')" style="margin-top:0.9rem;background:var(--orange);color:#000;border:none;padding:0.5rem 0.9rem;border-radius:6px;font-weight:700;cursor:pointer">COPY CODE</button>
+              </div>`;
+            pairingBox.style.display = 'block';
+            addLog(`✅ Pair code: ${body.pairingCode}`, 'info');
+            mainBtn.disabled = false;
+            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> REQUEST NEW CODE';
+          }
+          else if (body.qrDataUrl && useQR) {
+            // QR Code received
+            pairingBox.innerHTML = `<img src="${body.qrDataUrl}" style="width:260px;height:260px;border-radius:12px;display:block;margin:0 auto;background:#fff;padding:10px;" />`;
+            pairingBox.style.display = 'block';
+            addLog('QR code ready — scan with WhatsApp now!', 'info');
+            mainBtn.disabled = false;
+            mainBtn.style.background = '';
+            mainBtn.style.color = '';
+            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M7 17v1a3 3 0 0 0 3 3h1"/><path d="M7 10v4"/><path d="M10 10h4"/></svg> REFRESH QR';
+          }
+          else if (body.status === 'running') {
+            if (lastStatus !== 'running') addLog('Connected successfully.', 'info');
+            pairingBox.style.display = 'none';
+            mainBtn.disabled = true;
+            mainBtn.textContent = '✅ CONNECTED';
+            mainBtn.style.background = 'var(--green)';
+            mainBtn.style.color = '#fff';
+          }
+          else if (body.status === 'connecting' || body.status === 'starting') {
+            if (lastStatus !== body.status) addLog('Connecting...', 'warn');
+          }
+          else if (body.status === 'reconnecting') {
+            if (lastStatus !== 'reconnecting') addLog('Reconnecting...', 'warn');
+          }
+          else if (body.status === 'pairing') {
+            if (lastStatus !== 'pairing') addLog('Waiting for pairing confirmation...', 'info');
+          }
+          else if (body.lastError && body.status !== 'running') {
+            addLog(`Error: ${body.lastError}`, 'error');
+            if (body.status === 'crashed' || body.status === 'stopped') {
+              setMode(useQR ? 'qr' : 'pair');
+            }
+          }
+
+          lastStatus = body.status || lastStatus;
+        }
+      } catch (e) { console.error('SSE error', e); }
+    };
+
+    evtSource.onerror = () => addLog('SSE connection lost — retrying...', 'warn');
+
+    // Default UX: pair-code mode first; QR remains one-click switch.
+    setMode('pair');
+  </script>
+</body>
+</html>
