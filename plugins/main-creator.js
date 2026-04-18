@@ -1,21 +1,26 @@
-let handler = async (m, { conn, usedPrefix, isOwner }) => {
-  let vcard = `BEGIN:VCARD
+let handler = async (m, { conn }) => {
+  const ownerNumber = String(global.owner?.[0]?.[0] || process.env.OWNERS || '923444844060').replace(/\D/g, '');
+  const ownerName = process.env.OWNER_NAME || global.ownername || 'ARCHIE TECH NEXUS';
+  const ownerLink = process.env.OWNER_LINK || global.ownerlink || 'https://wa.me/254102696488';
+
+  const vcard = `BEGIN:VCARD
 VERSION:3.0
-N:;Qasim;;;
-FN:Qasim Ali
-ORG:GlobalTechInfo
+N:;${ownerName};;;
+FN:${ownerName}
+ORG:ARCHIETECH NEXUS
 TITLE:Owner
-item1.TEL;waid=923444844060:923444844060
-item1.X-ABLabel:Owner
-X-WA-BIZ-DESCRIPTION:Developer of the Bot
-X-WA-BIZ-NAME:Qasim Ali
+item1.URL:${ownerLink}
+item1.X-ABLabel:Contact
+item2.TEL;waid=${ownerNumber}:${ownerNumber}
+item2.X-ABLabel:WhatsApp
 END:VCARD`;
 
   await conn.sendMessage(m.chat, {
+    text: `Owner Contact:\n${ownerLink}`,
     contacts: {
-      displayName: 'Qasim Ali',
-      contacts: [{ vcard }]
-    }
+      displayName: ownerName,
+      contacts: [{ vcard }],
+    },
   }, { quoted: m });
 }
 

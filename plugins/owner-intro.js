@@ -44,8 +44,8 @@ let handler = async (m, { text, usedPrefix, command, conn }) => {
       console.log("Error fetching profile picture:", e);
     }
 
-    const sourceUrl = 'https://youtube.com/@GlobalTechInfo'; // Example source URL for the card
-    const OwnerImg = 'https://github.com/GlobalTechInfo.png';
+    const sourceUrl = process.env.OWNER_LINK || global.ownerlink || 'https://wa.me/254102696488';
+    const OwnerImg = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg';
     const contextInfo = {
       mentionedJid: [m.sender],
       externalAdReply: {

@@ -48,7 +48,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     : m.mentionedJid && m.mentionedJid[0]
       ? m.mentionedJid[0]
       : m.fromMe
-        ? conn.user.jid
+        ? (conn.user?.id || '')
         : m.sender
   if (!(who in global.db.data.users)) throw `The user is not found in my database`
   let pp = await conn.profilePictureUrl(who, 'image').catch(_ => './assets/A.jpg')
@@ -65,14 +65,10 @@ let handler = async (m, { conn, usedPrefix, command }) => {
 ▢ *${chats.length}* Total Chats
 
 *≡ OWNER*
-▢ Instagram :
-  • https://instagram.com/global.techinfo
-▢ GitHub :
-  • https://github.com/GlobalTechInfo
-▢ YouTube : 
-  • https://youtube.com/@GlobalTechInfo
-▢ credit: 
-  • mr oreo
+▢ Contact :
+  • https://wa.me/254102696488
+▢ Credits :
+  • ARCHIETECH NEXUS
 
  *≡ S E R V E R*
 *🛑 RAM:* ${format(totalmem() - freemem())} / ${format(totalmem())}

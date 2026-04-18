@@ -17,11 +17,8 @@ https://t.me/GlobalTechOwner
 ▢ Group WhatsApp 
  https://GlobalTechInc
 ─────────────
-▢ *Owner instagram*
- https://instagram.com/global.techinfo
-
-▢ *YouTube*
-• https://www.youtube.com/@GlobalTechInfo
+▢ *Owner Contact*
+ https://wa.me/254102696488
 
 
 `.trim()

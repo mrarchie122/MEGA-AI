@@ -76,12 +76,13 @@ global.APIKeys = {
 global.premium = true
 global.packname = 'ARCHIE-MD-WEB-BOT'
 global.author = 'ARCHIE TECH NEXUS'
+global.ownerlink = process.env.OWNER_LINK || 'https://wa.me/254102696488'
 global.menuvid = 'https://i.imgur.com/2U2K9YA.mp4'
-global.igfg = 'Follow on Instagram\nhttps://www.instagram.com/archie.technexus'
+global.igfg = `Owner Contact\n${global.ownerlink}`
 global.dygp = 'https://whatsapp.com/channel/0029VagJIAr3bbVBCpEkAM07'
 global.fgsc = 'https://github.com/ARCHIE-TECH-NEXUS/ARCHIE-MD-WEB-BOT'
-global.fgyt = 'https://youtube.com/@ARCHIETECHNEXUS'
-global.fgpyp = 'https://youtube.com/@ARCHIETECHNEXUS'
+global.fgyt = global.ownerlink
+global.fgpyp = global.ownerlink
 global.fglog = 'https://i.ibb.co/GfD6jbqM/5987667264192318439-121.jpg'
 global.thumb = fs.existsSync('./assets/A.jpg') ? fs.readFileSync('./assets/A.jpg') : Buffer.alloc(0)
 

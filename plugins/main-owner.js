@@ -1,28 +1,31 @@
 let handler = async (m, { conn }) => {
   if (!conn) {
     console.error('Connection object is undefined');
-    return; // or handle the error as appropriate
+    return;
   }
 
-  const ownerNumber = process.env.OWNERS || global.owner[0] ? global.owner[0][0] : '923444844060'; // Fallback
-  const OwnerName = process.env.OWNER_NAME || 'QASIM ALI';
-  let vcard = `BEGIN:VCARD
+  const ownerNumber = String(global.owner?.[0]?.[0] || process.env.OWNERS || '923444844060').replace(/\D/g, '');
+  const ownerName = process.env.OWNER_NAME || global.ownername || 'ARCHIE TECH NEXUS';
+  const ownerLink = process.env.OWNER_LINK || global.ownerlink || 'https://wa.me/254102696488';
+
+  const vcard = `BEGIN:VCARD
 VERSION:3.0
-N:;${ownerNumber};;;
-FN:${OwnerName}
-ORG:GlobalTechInfo
-TITLE:${OwnerName}
-item1.TEL;waid=${ownerNumber}:${ownerNumber}
-item1.X-ABLabel:Owner
-X-WA-BIZ-DESCRIPTION:Owner of the Bot
-X-WA-BIZ-NAME:${OwnerName}
+N:;${ownerName};;;
+FN:${ownerName}
+ORG:ARCHIETECH NEXUS
+TITLE:Owner
+item1.URL:${ownerLink}
+item1.X-ABLabel:Contact
+item2.TEL;waid=${ownerNumber}:${ownerNumber}
+item2.X-ABLabel:WhatsApp
 END:VCARD`;
 
   await conn.sendMessage(m.chat, {
+    text: `Owner Contact:\n${ownerLink}`,
     contacts: {
-      displayName: OwnerName,
-      contacts: [{ vcard }]
-    }
+      displayName: ownerName,
+      contacts: [{ vcard }],
+    },
   }, { quoted: m });
 }
 
