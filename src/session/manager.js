@@ -35,6 +35,8 @@ export class SessionManager extends EventEmitter {
         jid: null,
         authDir: this.getAuthDir(sessionId),
         worker: null,
+        reconnectTimer: null,
+        reconnectSince: null,
         lastError: null,
         updatedAt: new Date().toISOString(),
       })
@@ -78,14 +80,17 @@ export class SessionManager extends EventEmitter {
     }
 
     const existing = this.sessions.get(sessionId)
+    const forceRestart = options.forceRestart === true
     if (existing?.worker && existing.status !== 'crashed' && existing.status !== 'stopped') {
-      const requestedPairing = options.pairing === undefined ? (existing.pairing ?? true) : Boolean(options.pairing)
-      const requestedPhone = options.phoneNumber === undefined ? (existing.phoneNumber || '') : String(options.phoneNumber || '')
-      const currentPairing = existing.pairing ?? true
-      const currentPhone = existing.phoneNumber || ''
+      if (!forceRestart) {
+        const requestedPairing = options.pairing === undefined ? (existing.pairing ?? true) : Boolean(options.pairing)
+        const requestedPhone = options.phoneNumber === undefined ? (existing.phoneNumber || '') : String(options.phoneNumber || '')
+        const currentPairing = existing.pairing ?? true
+        const currentPhone = existing.phoneNumber || ''
 
-      if (requestedPairing === currentPairing && requestedPhone === currentPhone) {
-        return this.#serializeSession(existing)
+        if (requestedPairing === currentPairing && requestedPhone === currentPhone) {
+          return this.#serializeSession(existing)
+        }
       }
 
       await this.stopSession(sessionId)
@@ -181,6 +186,7 @@ export class SessionManager extends EventEmitter {
 
     worker.on('exit', (code, signal) => {
       state.worker = null
+      this.#clearReconnectWatch(state)
       const shouldResetAuth = code === 102
       const isClean = code === 0
       const isLoggedOut = code === 103
@@ -237,12 +243,48 @@ export class SessionManager extends EventEmitter {
     worker.on('error', err => {
       state.lastError = err.message
       state.status = 'crashed'
+      this.#clearReconnectWatch(state)
       state.updatedAt = new Date().toISOString()
       this.emit('session.update', this.#serializeSession(state))
     })
 
     this.emit('session.update', this.#serializeSession(state))
     return this.#serializeSession(state)
+  }
+
+  #clearReconnectWatch(state) {
+    if (state.reconnectTimer) {
+      clearTimeout(state.reconnectTimer)
+      state.reconnectTimer = null
+    }
+    state.reconnectSince = null
+  }
+
+  #scheduleReconnectWatch(state) {
+    if (state.reconnectTimer || state.status !== 'reconnecting') return
+    const reconnectStallMs = Math.max(15000, Number(process.env.SESSION_RECONNECT_STALL_MS || 45000))
+    state.reconnectSince = state.reconnectSince || Date.now()
+    state.reconnectTimer = setTimeout(async () => {
+      state.reconnectTimer = null
+      const current = this.sessions.get(state.sessionId)
+      if (!current || current.status !== 'reconnecting' || !current.worker) return
+      const stalledFor = Date.now() - (current.reconnectSince || Date.now())
+      if (stalledFor < reconnectStallMs) return
+      console.log(`[manager:${state.sessionId}] Reconnect stalled for ${stalledFor}ms; restarting worker`)
+      try {
+        await this.startSession(state.sessionId, {
+          phoneNumber: current.phoneNumber || '',
+          pairing: current.pairing ?? false,
+          resetAuth: false,
+          forceRestart: true,
+        })
+      } catch (err) {
+        current.lastError = err.message
+        current.status = 'crashed'
+        current.updatedAt = new Date().toISOString()
+        this.emit('session.update', this.#serializeSession(current))
+      }
+    }, reconnectStallMs)
   }
 
   #handleWorkerMessage(state, msg) {
@@ -259,6 +301,12 @@ export class SessionManager extends EventEmitter {
         state.status = 'pairing'
       } else {
         state.status = msg.status || state.status
+      }
+      if (msg.status === 'running' || msg.status === 'logged_out' || msg.status === 'crashed' || msg.status === 'stopped') {
+        this.#clearReconnectWatch(state)
+      }
+      if (msg.status === 'reconnecting') {
+        this.#scheduleReconnectWatch(state)
       }
       // Reset failure counter on successful connection
       if (msg.status === 'running') state.restartCount = 0
@@ -318,6 +366,7 @@ export class SessionManager extends EventEmitter {
     }
 
     state.status = 'stopping'
+    this.#clearReconnectWatch(state)
     state.updatedAt = new Date().toISOString()
     this.emit('session.update', this.#serializeSession(state))
 

@@ -423,6 +423,12 @@ global.__require = function req(fileUrl = import.meta.url) {
           return
         }
 
+        if (code === 401 && !hasOpenedConnection && !pairingRequested && !pairingCodeIssued) {
+          sendLog('Initial connection failure before open; restarting worker for retry')
+          process.exit(101)
+          return
+        }
+
         if (!shouldReconnect) {
           // Never auto-reset auth files here; preserve creds to avoid forced relink.
           sendLog("Logged out detected; preserving auth and waiting for explicit start/login from dashboard")
