@@ -161,7 +161,7 @@ export class SessionManager extends EventEmitter {
         const text = String(chunk || '').trim()
         if (!text) return
         for (const line of text.split(/\r?\n/)) {
-          if (/Bad MAC|Failed to decrypt message with any known session|Session error:Error: Bad MAC/i.test(line)) continue
+          if (/Bad MAC|Failed to decrypt message with any known session|Session error:Error: Bad MAC|libsignal\/src\/crypto\.js|libsignal\/src\/session_cipher\.js|libsignal\/src\/queue_job\.js|node:internal\/process\/task_queues|_asyncQueueExecutor/i.test(line)) continue
           const msg = `[${label}] ${line}`
           console.log(`[worker:${state.sessionId}] ${msg}`)
           this.emit('session.log', { sessionId: state.sessionId, message: msg })

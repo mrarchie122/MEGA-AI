@@ -126,6 +126,7 @@ app.get('/api/sessions/:sessionId', (req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
+    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const sessionId = String(req.body.sessionId || DEFAULT_SESSION_ID).trim()
     const phoneNumber = String(req.body.phoneNumber || '').trim()
     // Default mode is pair-code unless pairing is explicitly false.
@@ -147,6 +148,7 @@ app.post('/api/sessions', async (req, res) => {
 
 app.post('/api/sessions/:sessionId/start', async (req, res) => {
   try {
+    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const phoneNumber = String(req.body.phoneNumber || '').trim()
     const pairing = req.body.pairing === undefined
       ? true
@@ -165,6 +167,7 @@ app.post('/api/sessions/:sessionId/start', async (req, res) => {
 
 app.post('/api/sessions/:sessionId/stop', async (req, res) => {
   try {
+    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const session = await sessionManager.stopSession(req.params.sessionId)
     return res.json(session)
   } catch (error) {
@@ -174,6 +177,7 @@ app.post('/api/sessions/:sessionId/stop', async (req, res) => {
 
 app.delete('/api/sessions/:sessionId', async (req, res) => {
   try {
+    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const result = await sessionManager.deleteSession(req.params.sessionId)
     return res.json(result)
   } catch (error) {
@@ -195,6 +199,7 @@ process.on('unhandledRejection', err => {
 
 setImmediate(async () => {
   try {
+    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     // Find all sessions with existing credentials
     const sessionsDir = path.join(projectRoot, 'sessions')
     const entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
@@ -209,12 +214,13 @@ setImmediate(async () => {
     }
 
     if (existingSessionIds.length > 0) {
-      console.log(
-        `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(', ')}`
-      )
+        console.log(
+          `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(", ")}`
+        )
+        console.log(`Session restore pacing: ${restoreDelayMs}ms between worker starts`)
 
       for (const [index, sessionId] of existingSessionIds.entries()) {
-        if (index > 0) await new Promise(resolve => setTimeout(resolve, 750))
+        if (index > 0) await new Promise(resolve => setTimeout(resolve, restoreDelayMs))
 
         const existing = sessionManager.getSession(sessionId)
         if (!existing || !existing.pid) {
