@@ -1,34 +1,56 @@
 var handler = async (m, { conn }) => {
-  if (!m.quoted) throw '✳️❇️ Reply to a ViewOnce Message'
-  if (!m.quoted?.message) throw '✳️❇️ Invalid message type'
+  if (!m.quoted) throw "✳️❇️ Reply to a ViewOnce Message"
 
-  const quotedMessage = m.quoted.message
-  const embeddedMessage =
-    quotedMessage.viewOnceMessageV2?.message ||
-    quotedMessage.viewOnceMessage?.message ||
-    quotedMessage.viewOnceMessageV2Extension?.message ||
-    quotedMessage
+  const pickQuotedContainer = quoted =>
+    quoted?.message || quoted?.fakeObj?.message || quoted?.quoted?.message || null
 
-  const messageType = Object.keys(embeddedMessage || {})[0]
-  const messageContent = messageType ? embeddedMessage[messageType] : null
-
-  if (!messageType || !messageContent?.viewOnce) {
-    throw '✳️❇️ This is Not a ViewOnce Message'
+  const unwrapViewOnceMessage = message => {
+    if (!message || typeof message !== "object") return null
+    if (message.viewOnceMessageV2?.message) return message.viewOnceMessageV2.message
+    if (message.viewOnceMessage?.message) return message.viewOnceMessage.message
+    if (message.viewOnceMessageV2Extension?.message) return message.viewOnceMessageV2Extension.message
+    if (message.ephemeralMessage?.message) return unwrapViewOnceMessage(message.ephemeralMessage.message)
+    return null
   }
 
+  const quotedMessage = pickQuotedContainer(m.quoted)
+  const embeddedMessage = unwrapViewOnceMessage(quotedMessage)
+
+  // Some serializers expose only m.quoted.msg / m.quoted.mtype without raw wrappers.
+  const directType = m.quoted?.mtype
+  const directContent = m.quoted?.msg
+
+  const messageType =
+    (embeddedMessage && Object.keys(embeddedMessage)[0]) ||
+    (directContent?.viewOnce ? directType : null)
+  const messageContent =
+    (embeddedMessage && messageType ? embeddedMessage[messageType] : null) ||
+    (directContent?.viewOnce ? directContent : null)
+
+  if (!messageType || !messageContent) throw "✳️❇️ This is Not a ViewOnce Message"
+
   try {
-    if (typeof conn.copyNForward === 'function') {
-      await conn.copyNForward(m.chat, m.quoted, false, { readViewOnce: true })
+    // copyNForward(readViewOnce) here expects a legacy viewOnceMessage wrapper.
+    const forwardSource = m.quoted?.fakeObj || m.quoted
+    if (
+      typeof conn.copyNForward === "function" &&
+      forwardSource?.message?.viewOnceMessage?.message
+    ) {
+      await conn.copyNForward(m.chat, forwardSource, false, { readViewOnce: true })
       return
     }
 
-    const mediaType = messageType.replace(/Message$/, '')
+    const mediaType = messageType.replace(/Message$/, "")
+    if (typeof m.quoted?.download !== "function") {
+      throw new Error("quoted media is not downloadable")
+    }
+
     const buffer = await m.quoted.download()
     await conn.sendMessage(
       m.chat,
       {
         [mediaType]: buffer,
-        caption: messageContent.caption || '',
+        caption: messageContent.caption || "",
         mimetype: messageContent.mimetype,
       },
       { quoted: m }
@@ -38,8 +60,8 @@ var handler = async (m, { conn }) => {
   }
 }
 
-handler.help = ['readvo']
-handler.tags = ['tools']
-handler.command = ['readviewonce', 'read', 'vv', 'readvo']
+handler.help = ["readvo"]
+handler.tags = ["tools"]
+handler.command = ["readviewonce", "read", "vv", "readvo"]
 
 export default handler
