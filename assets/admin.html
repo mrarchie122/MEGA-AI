@@ -350,20 +350,57 @@
       }
     }
 
+    let autoRestoreAttempts = 0;
+    let lastAutoRestoreError = null;
+    let sessionCorrupted = false;
+
     async function autoRestoreSession() {
+      autoRestoreAttempts++;
       try {
         const res = await fetch("/api/sessions/" + mySessionId);
         if (res.status === 404) {
+          addLog("[Auto] Session not found, initiating pairing...", "info");
           await connect();
           return;
         }
 
         const state = await res.json();
         const status = String(state.status || "").toLowerCase();
-        if (["running", "starting", "reconnecting", "pairing", "connecting"].includes(status)) return;
+        const hasError = state.lastError && state.lastError.includes("MessageCounterError");
+        
+        if (hasError) {
+          sessionCorrupted = true;
+          addLog("[Auto] Session credentials corrupted (MessageCounterError). Clearing auth...", "error");
+          await resetAndReconnect();
+          return;
+        }
 
+        if (["running", "starting", "reconnecting", "pairing", "connecting"].includes(status)) {
+          if (status === "running") {
+            addLog("[Auto] Session already connected.", "info");
+          }
+          return;
+        }
+
+        addLog("[Auto] Attempting restore (attempt #" + autoRestoreAttempts + ")...", "info");
         await connect();
-      } catch {
+      } catch (err) {
+        lastAutoRestoreError = err.message;
+        addLog("[Auto] Restore failed: " + err.message, "error");
+        if (autoRestoreAttempts < 3) {
+          setTimeout(() => autoRestoreSession(), 2000 + (autoRestoreAttempts * 1000));
+        }
+      }
+    }
+
+    async function resetAndReconnect() {
+      try {
+        await fetch("/api/sessions/" + mySessionId, { method: "DELETE" });
+        addLog("Deleted corrupted session. Re-pairing required.", "warn");
+        setMode("pair");
+        mainBtn.disabled = false;
+      } catch (e) {
+        addLog("Reset failed: " + e.message, "error");
       }
     }
 
