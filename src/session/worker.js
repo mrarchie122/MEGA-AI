@@ -392,11 +392,13 @@ global.__require = function req(fileUrl = import.meta.url) {
           `Disconnect: code=${code}, shouldReconnect=${shouldReconnect}, message=${disconnectMsg}`
         )
 
+        const isHandshakeTimeout = /Opening handshake has timed out/i.test(disconnectMsg)
+
         if (process.send) {
           process.send({
             type: 'status',
             status: shouldReconnect ? 'reconnecting' : 'logged_out',
-            error: disconnectMsg,
+            error: shouldReconnect && isHandshakeTimeout ? null : disconnectMsg,
           })
         }
 

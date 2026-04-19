@@ -323,28 +323,47 @@
 
     // ── Connect ──────────────────────────────────────────────────────────────────
     async function connect() {
-      const pno = phoneInput.value.replace(/[^0-9]/g, '');
-      if (!useQR && !pno) {
-        addLog('Pair Code mode requires a phone number!', 'error');
-        phoneInput.focus();
-        return;
-      }
+      const pno = phoneInput.value.replace(/[^0-9]/g, "");
+      const wantsPairCode = useQR ? false : pno.length > 0;
       mainBtn.disabled = true;
-      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg> REQUESTING...';
-      pairingBox.style.display = 'none';
-      addLog(useQR ? 'Requesting QR code...' : `Requesting pair code for +${pno}...`);
+        mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg> REQUESTING...';
+      pairingBox.style.display = "none";
+
+      if (useQR) addLog("Requesting QR code...", "info");
+      else if (wantsPairCode) addLog("Requesting pair code for +" + pno + "...");
+      else addLog("Attempting automatic session restore...", "info");
+
       try {
-        const res = await fetch('/api/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: mySessionId, phoneNumber: pno, pairing: !useQR })
+        const res = await fetch("/api/sessions/" + mySessionId + "/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phoneNumber: wantsPairCode ? pno : "", pairing: useQR ? false : wantsPairCode, resetAuth: false })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Server error');
-        addLog(`Session started — awaiting ${useQR ? 'QR scan' : 'pair code'}...`, 'info');
+        if (res.ok === false) throw new Error(data.error || "Server error");
+        if (useQR) addLog("Session started — awaiting QR scan...", "info");
+        else if (wantsPairCode) addLog("Session started — awaiting pair code...", "info");
+        else addLog("Session restore requested. Waiting for reconnect...", "info");
       } catch (e) {
-        addLog(`Request failed: ${e.message}`, 'error');
-        setMode(useQR ? 'qr' : 'pair');
+        addLog("Request failed: " + e.message, "error");
+        setMode(useQR ? "qr" : "pair");
+      }
+    }
+
+    async function autoRestoreSession() {
+      try {
+        const res = await fetch("/api/sessions/" + mySessionId);
+        if (res.status === 404) {
+          await connect();
+          return;
+        }
+
+        const state = await res.json();
+        const status = String(state.status || "").toLowerCase();
+        if (["running", "starting", "reconnecting", "pairing", "connecting"].includes(status)) return;
+
+        await connect();
+      } catch {
       }
     }
 
@@ -366,7 +385,7 @@
             pairingBox.innerHTML = `
               <div style="text-align:center;padding:1rem">
                 <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.6rem">Enter this code in WhatsApp → Linked Devices → Link with Phone Number</div>
-                <div style="font-size:2.5rem;letter-spacing:12px;font-family:'Fira Code',monospace;color:var(--orange);font-weight:700">${body.pairingCode}</div>
+                <div style="font-size:1.85rem;letter-spacing:6px;font-family:'Fira Code',monospace;color:var(--orange);font-weight:700">${body.pairingCode}</div>
                 <button onclick="copyPairCode('${body.pairingCode}')" style="margin-top:0.9rem;background:var(--orange);color:#000;border:none;padding:0.5rem 0.9rem;border-radius:6px;font-weight:700;cursor:pointer">COPY CODE</button>
               </div>`;
             pairingBox.style.display = 'block';
@@ -417,6 +436,7 @@
 
     // Default UX: pair-code mode first; QR remains one-click switch.
     setMode('pair');
+    autoRestoreSession();
   </script>
 </body>
 </html>
