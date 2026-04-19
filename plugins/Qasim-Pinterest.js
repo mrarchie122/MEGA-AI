@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import pkg from 'nayan-videos-downloader';
+import pkg from '../lib/nayan-downloader.js';
 const { pintarest } = pkg; // Correct import for the package
 
 const fetchWithRetry = async (url, options, retries = 3) => {

@@ -1,4 +1,4 @@
-import pkg from 'nayan-videos-downloader';
+import pkg from '../lib/nayan-downloader.js';
 const { GDLink } = pkg;
 
 // Simple retry function for fetch requests

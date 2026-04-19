@@ -250,6 +250,44 @@ global.__require = function req(fileUrl = import.meta.url) {
       }
     })()
 
+    const handlerConcurrency = Math.max(1, Number(process.env.WORKER_HANDLER_CONCURRENCY || 4))
+    const handlerTimeoutMs = Math.max(5000, Number(process.env.WORKER_HANDLER_TIMEOUT_MS || 45000))
+    const handlerQueue = []
+    let activeHandlerCount = 0
+
+    const pumpHandlerQueue = () => {
+      while (activeHandlerCount < handlerConcurrency && handlerQueue.length > 0) {
+        const job = handlerQueue.shift()
+        activeHandlerCount += 1
+
+        Promise.resolve()
+          .then(async () => {
+            await Promise.race([
+              conn.handler(job.messages),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`message handler timed out after ${handlerTimeoutMs}ms`)),
+                  handlerTimeoutMs
+                )
+              ),
+            ])
+          })
+          .catch(error => {
+            sendLog(`Handler error: ${error.message}`)
+            console.error(error)
+          })
+          .finally(() => {
+            activeHandlerCount -= 1
+            pumpHandlerQueue()
+          })
+      }
+    }
+
+    const queueMessageHandler = messages => {
+      handlerQueue.push({ messages })
+      pumpHandlerQueue()
+    }
+
     const conn = makeWASocket({
       ...(waVersion?.length ? { version: waVersion } : {}),
       logger: pino({ level: 'silent' }), // silent — we do our own logging
@@ -444,17 +482,7 @@ global.__require = function req(fileUrl = import.meta.url) {
         )
       }
 
-      try {
-        await Promise.race([
-          conn.handler(messages),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('message handler timed out after 45000ms')), 45000)
-          ),
-        ])
-      } catch (e) {
-        sendLog(`Handler error: ${e.message}`)
-        console.error(e)
-      }
+      queueMessageHandler(messages)
     })
     conn.ev.on('group-participants.update', conn.participantsUpdate)
     conn.ev.on('groups.update', conn.groupsUpdate)

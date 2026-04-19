@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import pkg from 'nayan-videos-downloader';
+import pkg from '../lib/nayan-downloader.js';
 const { capcut } = pkg;
 
 const handler = async (m, { conn, args }) => {

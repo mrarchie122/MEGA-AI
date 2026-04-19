@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import pkg from 'nayan-videos-downloader';
+import pkg from '../lib/nayan-downloader.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';

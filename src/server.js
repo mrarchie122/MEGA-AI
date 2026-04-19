@@ -213,9 +213,11 @@ setImmediate(async () => {
         `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(', ')}`
       )
 
-      for (const sessionId of existingSessionIds) {
+      for (const [index, sessionId] of existingSessionIds.entries()) {
+        if (index > 0) await new Promise(resolve => setTimeout(resolve, 750))
+
         const existing = sessionManager.getSession(sessionId)
-        if (!existing || existing.status === 'stopped' || existing.status === 'crashed') {
+        if (!existing || !existing.pid) {
           console.log(`Auto-starting session ${sessionId}...`)
           try {
             await sessionManager.startSession(sessionId, {
