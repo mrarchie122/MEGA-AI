@@ -387,12 +387,12 @@ global.__require = function req(fileUrl = import.meta.url) {
         const code = Number(rawCode)
         const shouldReconnect = code !== DisconnectReason.loggedOut
         const disconnectMsg = lastDisconnect?.error?.message || `code ${rawCode ?? 'unknown'}`
-
-        sendLog(
-          `Disconnect: code=${code}, shouldReconnect=${shouldReconnect}, message=${disconnectMsg}`
-        )
-
         const isHandshakeTimeout = /Opening handshake has timed out/i.test(disconnectMsg)
+        const disconnectLog = isHandshakeTimeout && shouldReconnect
+          ? `Disconnect: code=${code}, transient reconnect in progress`
+          : `Disconnect: code=${code}, shouldReconnect=${shouldReconnect}, message=${disconnectMsg}`
+
+        sendLog(disconnectLog)
 
         if (process.send) {
           process.send({
@@ -411,9 +411,9 @@ global.__require = function req(fileUrl = import.meta.url) {
                 sendLog('515 recovery timeout reached; restarting worker')
                 process.exit(101)
               }
-            }, 20000)
+            }, 45000)
           }
-          sendLog('Restart-required stream error detected; waiting up to 20s for internal reconnect')
+          sendLog('Restart-required stream error detected; waiting up to 45s for internal reconnect')
           return
         }
 

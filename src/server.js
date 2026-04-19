@@ -204,7 +204,8 @@ process.on('unhandledRejection', err => {
 
 setImmediate(async () => {
   try {
-    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
+    const restoreBatchSize = Math.max(1, Number(process.env.SESSION_RESTORE_BATCH_SIZE || 3))
+    const restoreDelayMs = Math.max(1000, Number(process.env.SESSION_RESTORE_DELAY_MS || 5000))
     // Find all sessions with existing credentials
     const sessionsDir = path.join(projectRoot, 'sessions')
     const entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
@@ -222,13 +223,15 @@ setImmediate(async () => {
         console.log(
           `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(", ")}`
         )
-        console.log(`Session restore pacing: ${restoreDelayMs}ms between worker starts`)
+        console.log(`Session restore pacing: ${restoreBatchSize} worker(s) per batch, ${restoreDelayMs}ms between batches`)
 
-      for (const [index, sessionId] of existingSessionIds.entries()) {
-        if (index > 0) await new Promise(resolve => setTimeout(resolve, restoreDelayMs))
+      for (let offset = 0; offset < existingSessionIds.length; offset += restoreBatchSize) {
+        const batch = existingSessionIds.slice(offset, offset + restoreBatchSize)
 
-        const existing = sessionManager.getSession(sessionId)
-        if (!existing || !existing.pid) {
+        await Promise.all(batch.map(async sessionId => {
+          const existing = sessionManager.getSession(sessionId)
+          if (existing && existing.pid) return
+
           console.log(`Auto-starting session ${sessionId}...`)
           try {
             await sessionManager.startSession(sessionId, {
@@ -239,6 +242,10 @@ setImmediate(async () => {
           } catch (sessionError) {
             console.error(`Failed to auto-start ${sessionId}:`, sessionError.message)
           }
+        }))
+
+        if (offset + restoreBatchSize < existingSessionIds.length) {
+          await new Promise(resolve => setTimeout(resolve, restoreDelayMs))
         }
       }
     } else {
