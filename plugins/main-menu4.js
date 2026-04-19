@@ -60,7 +60,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
         ? (conn.user?.id || '')
         : m.sender
   if (!(who in global.db.data.users)) throw `✳️ The user is not found in my database`
-  let pp = './assets/A.jpg'
+  let pp = join(process.cwd(), 'assets', 'A.jpg')
   let user = global.db.data.users[who]
   let { name, exp, diamond, lastclaim, registered, regTime, age, level, role, warn } =
     global.db.data.users[who]
@@ -75,6 +75,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
   let readMore = more.repeat(850)
   let greeting = ucapan()
   let quote = quotes[Math.floor(Math.random() * quotes.length)]
+  const done = '✅'
 
   let taguser = '@' + m.sender.split('@s.whatsapp.net')[0]
   let str = `
