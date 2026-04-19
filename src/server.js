@@ -126,14 +126,16 @@ app.get('/api/sessions/:sessionId', (req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const sessionId = String(req.body.sessionId || DEFAULT_SESSION_ID).trim()
-    const phoneNumber = String(req.body.phoneNumber || '').trim()
-    // Default mode is pair-code unless pairing is explicitly false.
+    const phoneNumber = String(req.body.phoneNumber || "").trim()
+    const authDir = path.join(projectRoot, "sessions", sessionId, "auth")
+    const credsPath = path.join(authDir, "creds.json")
+    const hasCreds = fs.existsSync(credsPath)
     const pairing = req.body.pairing === undefined
-      ? true
-      : req.body.pairing === true || req.body.pairing === 'true'
-    const resetAuth = pairing && phoneNumber.length > 0
+      ? !hasCreds
+      : req.body.pairing === true || req.body.pairing === "true"
+    const explicitReset = req.body.resetAuth === true || req.body.resetAuth === "true"
+    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0 && !hasCreds)
 
     const session = await sessionManager.startSession(sessionId, {
       phoneNumber,
@@ -146,15 +148,20 @@ app.post('/api/sessions', async (req, res) => {
   }
 })
 
-app.post('/api/sessions/:sessionId/start', async (req, res) => {
+app.post("/api/sessions/:sessionId/start", async (req, res) => {
   try {
-    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
-    const phoneNumber = String(req.body.phoneNumber || '').trim()
+    const sessionId = req.params.sessionId
+    const phoneNumber = String(req.body.phoneNumber || "").trim()
+    const authDir = path.join(projectRoot, "sessions", sessionId, "auth")
+    const credsPath = path.join(authDir, "creds.json")
+    const hasCreds = fs.existsSync(credsPath)
     const pairing = req.body.pairing === undefined
-      ? true
-      : req.body.pairing === true || req.body.pairing === 'true'
-    const resetAuth = pairing && phoneNumber.length > 0
-    const session = await sessionManager.startSession(req.params.sessionId, {
+      ? !hasCreds
+      : req.body.pairing === true || req.body.pairing === "true"
+    const explicitReset = req.body.resetAuth === true || req.body.resetAuth === "true"
+    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0 && !hasCreds)
+
+    const session = await sessionManager.startSession(sessionId, {
       phoneNumber,
       pairing,
       resetAuth,
@@ -165,9 +172,8 @@ app.post('/api/sessions/:sessionId/start', async (req, res) => {
   }
 })
 
-app.post('/api/sessions/:sessionId/stop', async (req, res) => {
+app.post("/api/sessions/:sessionId/stop", async (req, res) => {
   try {
-    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const session = await sessionManager.stopSession(req.params.sessionId)
     return res.json(session)
   } catch (error) {
@@ -175,9 +181,8 @@ app.post('/api/sessions/:sessionId/stop', async (req, res) => {
   }
 })
 
-app.delete('/api/sessions/:sessionId', async (req, res) => {
+app.delete("/api/sessions/:sessionId", async (req, res) => {
   try {
-    const restoreDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_DELAY_MS || 1500))
     const result = await sessionManager.deleteSession(req.params.sessionId)
     return res.json(result)
   } catch (error) {

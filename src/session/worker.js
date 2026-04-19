@@ -241,12 +241,18 @@ global.__require = function req(fileUrl = import.meta.url) {
     }
 
     sendLog('Creating WhatsApp socket...')
-    const browserName = String(process.env.WA_BROWSER_NAME || 'Edge')
+    const browserName = String(process.env.WA_BROWSER_NAME || "Edge")
     const browserSignature = (() => {
       try {
+        if (typeof Browsers.ubuntu === "function") return Browsers.ubuntu(browserName)
         return Browsers.macOS(browserName)
       } catch {
-        return Browsers.macOS('Chrome')
+        try {
+          if (typeof Browsers.ubuntu === "function") return Browsers.ubuntu("Chrome")
+        } catch {
+          // ignore
+        }
+        return Browsers.macOS("Chrome")
       }
     })()
 
