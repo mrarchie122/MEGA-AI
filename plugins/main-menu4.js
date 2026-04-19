@@ -59,7 +59,30 @@ let handler = async (m, { conn, usedPrefix, command }) => {
       : m.fromMe
         ? (conn.user?.id || '')
         : m.sender
-  if (!(who in global.db.data.users)) throw `✳️ The user is not found in my database`
+  if (!(who in global.db.data.users)) {
+    global.db.data.users[who] = {
+      exp: 0,
+      credit: 0,
+      bank: 0,
+      chicken: 0,
+      lastclaim: 0,
+      registered: false,
+      name: conn.getName(who),
+      age: -1,
+      regTime: -1,
+      afk: -1,
+      afkReason: '',
+      banned: false,
+      warn: 0,
+      level: 0,
+      role: 'Tadpole',
+      autolevelup: false,
+      lover: '',
+      exlover: '',
+      crush: '',
+      excount: 0,
+    }
+  }
   let pp = join(process.cwd(), 'assets', 'A.jpg')
   let user = global.db.data.users[who]
   let { name, exp, diamond, lastclaim, registered, regTime, age, level, role, warn } =

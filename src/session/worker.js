@@ -416,17 +416,8 @@ global.__require = function req(fileUrl = import.meta.url) {
         }
 
         if (!shouldReconnect) {
-          const isRegistered = Boolean(state?.creds?.registered)
-
-          // Only force auth reset when never connected and clearly unregistered.
-          if (!isRegistered && !hasOpenedConnection && !resetRestartRequested) {
-            resetRestartRequested = true
-            sendLog('Unregistered + logged_out before first open, requesting auth reset restart')
-            process.exit(102)
-            return
-          }
-
-          sendLog('Logged out detected; waiting for explicit start/login from dashboard')
+          // Never auto-reset auth files here; preserve creds to avoid forced relink.
+          sendLog("Logged out detected; preserving auth and waiting for explicit start/login from dashboard")
           process.exit(103)
           return
         }
