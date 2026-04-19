@@ -719,7 +719,7 @@ let handler = async (m, { conn, usedPrefix, command }) => {
 }
 handler.help = ['main']
 handler.tags = ['group']
-handler.command = ['menu4', 'help4', 'allmenu', 'fullmenu']
+handler.command = ['menu', 'help', 'h', 'commands', 'menu4', 'help4', 'allmenu', 'fullmenu']
 
 export default handler
 function clockString(ms) {

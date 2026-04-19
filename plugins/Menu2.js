@@ -154,7 +154,7 @@ str = styleMenuCommands(str, usedPrefix)
 }
 handler.help = ['main']
 handler.tags = ['group']
-handler.command = ['menu', 'help', 'h', 'commands', 'menu2', 'help2'] 
+handler.command = ['menu2', 'help2'] 
 
 export default handler
 function clockString(ms) {
