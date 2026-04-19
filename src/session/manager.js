@@ -14,9 +14,11 @@ export class SessionManager extends EventEmitter {
     this.workerPath = workerPath
     this.baseEnv = baseEnv
     this.sessions = new Map()
+    this.restoreSweepTimer = null
 
     fs.mkdirSync(this.sessionsRoot, { recursive: true })
     this.#hydrateFromDisk()
+    this.#startRestoreSweep()
   }
 
   #hydrateFromDisk() {
@@ -37,6 +39,7 @@ export class SessionManager extends EventEmitter {
         worker: null,
         reconnectTimer: null,
         reconnectSince: null,
+        recoveryPending: false,
         lastError: null,
         updatedAt: new Date().toISOString(),
       })
@@ -122,6 +125,7 @@ export class SessionManager extends EventEmitter {
       jid: null,
       authDir,
       worker: null,
+      recoveryPending: false,
       lastError: null,
       updatedAt: new Date().toISOString(),
     }
@@ -260,9 +264,65 @@ export class SessionManager extends EventEmitter {
     state.reconnectSince = null
   }
 
+  #getStallMs() {
+    return Math.max(
+      15000,
+      Number(process.env.SESSION_RESTORE_STALL_MS || process.env.SESSION_RECONNECT_STALL_MS || 45000)
+    )
+  }
+
+  #isTransientStatus(status) {
+    return ['starting', 'connecting', 'reconnecting', 'pairing'].includes(String(status || '').toLowerCase())
+  }
+
+  async #restartStalledSession(state, reason) {
+    if (!state || state.recoveryPending) return
+    state.recoveryPending = true
+    try {
+      console.log(`[manager:${state.sessionId}] ${reason}; restarting worker`)
+      await this.startSession(state.sessionId, {
+        phoneNumber: state.phoneNumber || '',
+        pairing: state.pairing ?? false,
+        resetAuth: false,
+        forceRestart: true,
+      })
+    } catch (err) {
+      state.lastError = err.message
+      state.status = 'crashed'
+      state.updatedAt = new Date().toISOString()
+      this.emit('session.update', this.#serializeSession(state))
+    } finally {
+      state.recoveryPending = false
+    }
+  }
+
+  #startRestoreSweep() {
+    if (this.restoreSweepTimer) return
+    const sweepMs = Math.max(10000, Number(process.env.SESSION_RESTORE_SWEEP_MS || 15000))
+
+    this.restoreSweepTimer = setInterval(() => {
+      const stallMs = this.#getStallMs()
+      for (const state of this.sessions.values()) {
+        const status = String(state.status || '').toLowerCase()
+        if (!this.#isTransientStatus(status)) continue
+        if (status === 'logged_out' || status === 'stopped') continue
+
+        const updatedAt = Date.parse(state.updatedAt || '')
+        const stalledFor = Number.isFinite(updatedAt) ? Date.now() - updatedAt : stallMs
+        if (stalledFor < stallMs) continue
+
+        void this.#restartStalledSession(state, `Restore sweep found ${status} session stalled for ${stalledFor}ms`)
+      }
+    }, sweepMs)
+
+    if (typeof this.restoreSweepTimer.unref === 'function') {
+      this.restoreSweepTimer.unref()
+    }
+  }
+
   #scheduleReconnectWatch(state) {
     if (state.reconnectTimer || state.status !== 'reconnecting') return
-    const reconnectStallMs = Math.max(15000, Number(process.env.SESSION_RECONNECT_STALL_MS || 45000))
+    const reconnectStallMs = this.#getStallMs()
     state.reconnectSince = state.reconnectSince || Date.now()
     state.reconnectTimer = setTimeout(async () => {
       state.reconnectTimer = null
@@ -270,20 +330,7 @@ export class SessionManager extends EventEmitter {
       if (!current || current.status !== 'reconnecting' || !current.worker) return
       const stalledFor = Date.now() - (current.reconnectSince || Date.now())
       if (stalledFor < reconnectStallMs) return
-      console.log(`[manager:${state.sessionId}] Reconnect stalled for ${stalledFor}ms; restarting worker`)
-      try {
-        await this.startSession(state.sessionId, {
-          phoneNumber: current.phoneNumber || '',
-          pairing: current.pairing ?? false,
-          resetAuth: false,
-          forceRestart: true,
-        })
-      } catch (err) {
-        current.lastError = err.message
-        current.status = 'crashed'
-        current.updatedAt = new Date().toISOString()
-        this.emit('session.update', this.#serializeSession(current))
-      }
+      await this.#restartStalledSession(current, `Reconnect stalled for ${stalledFor}ms`)
     }, reconnectStallMs)
   }
 

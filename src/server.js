@@ -204,8 +204,8 @@ process.on('unhandledRejection', err => {
 
 setImmediate(async () => {
   try {
-    const restoreBatchSize = Math.max(1, Number(process.env.SESSION_RESTORE_BATCH_SIZE || 2))
-    const restoreDelayMs = Math.max(1000, Number(process.env.SESSION_RESTORE_DELAY_MS || 5000))
+    const restoreConcurrency = Math.max(1, Number(process.env.SESSION_RESTORE_CONCURRENCY || 4))
+    const restoreKickDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_KICK_DELAY_MS || 1000))
     const restoreSettleMs = Math.max(15000, Number(process.env.SESSION_RESTORE_SETTLE_MS || 45000))
     const restorePollMs = Math.max(500, Number(process.env.SESSION_RESTORE_POLL_MS || 2000))
     // Find all sessions with existing credentials
@@ -225,7 +225,10 @@ setImmediate(async () => {
         console.log(
           `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(", ")}`
         )
-        console.log(`Session restore pacing: ${restoreBatchSize} worker(s) per batch, ${restoreDelayMs}ms between batches, settle timeout ${restoreSettleMs}ms`)
+        console.log(`Session restore pacing: ${restoreConcurrency} concurrent worker(s), settle timeout ${restoreSettleMs}ms, queue tick ${restoreKickDelayMs}ms`)
+
+      const pendingSessionIds = [...existingSessionIds]
+      const activeSessionIds = new Set()
 
       const waitForSessionToSettle = async sessionId => {
         const deadline = Date.now() + restoreSettleMs
@@ -240,30 +243,43 @@ setImmediate(async () => {
         return sessionManager.getSession(sessionId)
       }
 
-      for (let offset = 0; offset < existingSessionIds.length; offset += restoreBatchSize) {
-        const batch = existingSessionIds.slice(offset, offset + restoreBatchSize)
+      const launchNextRestore = () => {
+        while (activeSessionIds.size < restoreConcurrency && pendingSessionIds.length > 0) {
+          const sessionId = pendingSessionIds.shift()
+          if (!sessionId) break
+          activeSessionIds.add(sessionId)
 
-        await Promise.all(batch.map(async sessionId => {
-          const existing = sessionManager.getSession(sessionId)
-          if (existing && existing.pid) return
+          void (async () => {
+            try {
+              const existing = sessionManager.getSession(sessionId)
+              if (existing && existing.pid) {
+                return
+              }
 
-          console.log(`Auto-starting session ${sessionId}...`)
-          try {
-            await sessionManager.startSession(sessionId, {
-              phoneNumber: '',
-              pairing: false,
-            })
-            console.log(`Session ${sessionId} started`)
-          } catch (sessionError) {
-            console.error(`Failed to auto-start ${sessionId}:`, sessionError.message)
-          }
-        }))
+              console.log(`Auto-starting session ${sessionId}...`)
+              try {
+                await sessionManager.startSession(sessionId, {
+                  phoneNumber: '',
+                  pairing: false,
+                })
+                console.log(`Session ${sessionId} started`)
+              } catch (sessionError) {
+                console.error(`Failed to auto-start ${sessionId}:`, sessionError.message)
+              }
 
-        await Promise.all(batch.map(sessionId => waitForSessionToSettle(sessionId)))
-
-        if (offset + restoreBatchSize < existingSessionIds.length) {
-          await new Promise(resolve => setTimeout(resolve, restoreDelayMs))
+              await waitForSessionToSettle(sessionId)
+            } finally {
+              activeSessionIds.delete(sessionId)
+              launchNextRestore()
+            }
+          })()
         }
+      }
+
+      launchNextRestore()
+      while (pendingSessionIds.length > 0 || activeSessionIds.size > 0) {
+        await new Promise(resolve => setTimeout(resolve, restoreKickDelayMs))
+        launchNextRestore()
       }
     } else {
       console.log(`No creds found — waiting for user to connect via dashboard.`)
