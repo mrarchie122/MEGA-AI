@@ -337,7 +337,7 @@
         const res = await fetch("/api/sessions/" + mySessionId + "/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phoneNumber: wantsPairCode ? pno : "", pairing: useQR ? false : wantsPairCode, resetAuth: false })
+          body: JSON.stringify({ phoneNumber: wantsPairCode ? pno : "", pairing: useQR ? false : wantsPairCode, resetAuth: wantsPairCode })
         });
         const data = await res.json();
         if (res.ok === false) throw new Error(data.error || "Server error");
@@ -456,6 +456,14 @@
           }
           else if (body.status === 'pairing') {
             if (lastStatus !== 'pairing') addLog('Waiting for pairing confirmation...', 'info');
+          }
+          else if (body.status === 'logged_out') {
+            if (lastStatus !== 'logged_out') addLog('Session logged out. Enter number and request a new pair code.', 'warn');
+            mainBtn.disabled = false;
+            mainBtn.style.background = '';
+            mainBtn.style.color = '';
+            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> GET PAIR CODE';
+            setMode('pair');
           }
           else if (body.lastError && body.status !== 'running') {
             addLog(`Error: ${body.lastError}`, 'error');

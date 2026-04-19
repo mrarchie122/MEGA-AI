@@ -161,6 +161,13 @@ export class SessionManager extends EventEmitter {
         const text = String(chunk || '').trim()
         if (!text) return
         for (const line of text.split(/\r?\n/)) {
+          if (/MessageCounterError: Key used already or never filled/i.test(line)) {
+            state.status = 'logged_out'
+            state.lastError = 'MessageCounterError: Key used already or never filled'
+            state.updatedAt = new Date().toISOString()
+            this.emit('session.update', this.#serializeSession(state))
+            continue
+          }
           if (/Bad MAC|Failed to decrypt message with any known session|Session error:Error: Bad MAC|libsignal\/src\/crypto\.js|libsignal\/src\/session_cipher\.js|libsignal\/src\/queue_job\.js|node:internal\/process\/task_queues|_asyncQueueExecutor|Closing open session in favor of incoming prekey bundle|Closing session: SessionEntry|registrationId:|currentRatchet:|indexInfo:|ephemeralKeyPair:|lastRemoteEphemeralKey:|remoteIdentityKey:|rootKey:|baseKey:|pubKey:|privKey:/i.test(line)) continue
           const msg = `[${label}] ${line}`
           console.log(`[worker:${state.sessionId}] ${msg}`)
@@ -290,7 +297,11 @@ export class SessionManager extends EventEmitter {
     }
 
     if (msg.type === 'error') {
-      state.lastError = msg.error || 'unknown worker error'
+      const errMsg = msg.error || 'unknown worker error'
+      state.lastError = errMsg
+      if (/MessageCounterError|Key used already or never filled/i.test(errMsg)) {
+        state.status = 'logged_out'
+      }
       state.updatedAt = new Date().toISOString()
       this.emit('session.update', this.#serializeSession(state))
     }

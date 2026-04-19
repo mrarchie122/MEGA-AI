@@ -135,7 +135,7 @@ app.post('/api/sessions', async (req, res) => {
       ? !hasCreds
       : req.body.pairing === true || req.body.pairing === "true"
     const explicitReset = req.body.resetAuth === true || req.body.resetAuth === "true"
-    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0 && !hasCreds)
+    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0)
 
     const session = await sessionManager.startSession(sessionId, {
       phoneNumber,
@@ -159,7 +159,7 @@ app.post("/api/sessions/:sessionId/start", async (req, res) => {
       ? !hasCreds
       : req.body.pairing === true || req.body.pairing === "true"
     const explicitReset = req.body.resetAuth === true || req.body.resetAuth === "true"
-    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0 && !hasCreds)
+    const resetAuth = explicitReset || (pairing && phoneNumber.length > 0)
 
     const session = await sessionManager.startSession(sessionId, {
       phoneNumber,
