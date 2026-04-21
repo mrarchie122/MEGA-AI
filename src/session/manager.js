@@ -15,6 +15,10 @@ export class SessionManager extends EventEmitter {
     this.baseEnv = baseEnv
     this.sessions = new Map()
     this.restoreSweepTimer = null
+    this.recoveryQueue = []
+    this.recoveryInFlight = 0
+    this.maxRecoveryConcurrency = Math.max(1, Number(process.env.SESSION_RECOVERY_MAX_CONCURRENCY || 3))
+    this.minRecoveryGapMs = Math.max(15000, Number(process.env.SESSION_RECOVERY_MIN_GAP_MS || 60000))
 
     fs.mkdirSync(this.sessionsRoot, { recursive: true })
     this.#hydrateFromDisk()
@@ -40,6 +44,8 @@ export class SessionManager extends EventEmitter {
         reconnectTimer: null,
         reconnectSince: null,
         recoveryPending: false,
+        recoveryQueued: false,
+        lastRecoveryAt: 0,
         lastError: null,
         updatedAt: new Date().toISOString(),
       })
@@ -109,10 +115,39 @@ export class SessionManager extends EventEmitter {
     }
 
     const authDir = this.getAuthDir(sessionId)
+    const sessionDir = path.dirname(authDir)
+
     if (options.resetAuth === true) {
-      fs.rmSync(path.dirname(authDir), { recursive: true, force: true })
+      fs.rmSync(sessionDir, { recursive: true, force: true })
     }
+
     fs.mkdirSync(authDir, { recursive: true })
+
+    // Migrate legacy sessions where creds/key json files were stored directly in session root.
+    const legacyCredsPath = path.join(sessionDir, 'creds.json')
+    const authCredsPath = path.join(authDir, 'creds.json')
+    if (!fs.existsSync(authCredsPath) && fs.existsSync(legacyCredsPath)) {
+      const legacyFiles = fs.readdirSync(sessionDir)
+      for (const file of legacyFiles) {
+        if (!file.endsWith('.json')) continue
+        if (file === 'database.json') continue
+
+        const from = path.join(sessionDir, file)
+        const to = path.join(authDir, file)
+        if (!fs.existsSync(from) || fs.existsSync(to)) continue
+
+        try {
+          fs.renameSync(from, to)
+        } catch {
+          try {
+            fs.copyFileSync(from, to)
+            fs.unlinkSync(from)
+          } catch {
+            // ignore migrate failures for individual files
+          }
+        }
+      }
+    }
 
     const state = existing || {
       sessionId,
@@ -126,6 +161,8 @@ export class SessionManager extends EventEmitter {
       authDir,
       worker: null,
       recoveryPending: false,
+      recoveryQueued: false,
+      lastRecoveryAt: 0,
       lastError: null,
       updatedAt: new Date().toISOString(),
     }
@@ -139,6 +176,7 @@ export class SessionManager extends EventEmitter {
     state.lastError = null
     state.restartCount = (options.resetAuth ? 0 : (state.restartCount || 0)) // reset count on auth reset
     state.updatedAt = new Date().toISOString()
+    state.lastStartAt = Date.now()
 
     const workerEnv = {
       ...process.env,
@@ -170,7 +208,7 @@ export class SessionManager extends EventEmitter {
         const text = String(chunk || '').trim()
         if (!text) return
         for (const line of text.split(/\r?\n/)) {
-          if (/MessageCounterError: Key used already or never filled/i.test(line)) {
+          if (/MessageCounterError: Key used already or never filled/i.test(line) && state.status !== 'running') {
             state.status = 'logged_out'
             state.lastError = 'MessageCounterError: Key used already or never filled'
             state.updatedAt = new Date().toISOString()
@@ -194,7 +232,8 @@ export class SessionManager extends EventEmitter {
       const shouldResetAuth = code === 102
       const isClean = code === 0
       const isLoggedOut = code === 103
-      const isRestart = (code === 101 || code === 102) && state.status !== 'stopping'
+      const wasLoggedOutBeforeExit = state.status === 'logged_out'
+      const isRestart = (code === 101 || code === 102) && state.status !== 'stopping' && !wasLoggedOutBeforeExit
 
       // Track consecutive failures to break infinite loops
       if (isRestart) {
@@ -203,7 +242,7 @@ export class SessionManager extends EventEmitter {
         state.restartCount = 0
       }
 
-      const tooManyRestarts = state.restartCount > 60
+      const tooManyRestarts = state.restartCount > Math.max(6, Number(process.env.SESSION_MAX_RESTARTS || 12))
 
       state.status = state.status === 'stopping'
         ? 'stopped'
@@ -275,9 +314,48 @@ export class SessionManager extends EventEmitter {
     return ['starting', 'connecting', 'reconnecting', 'pairing'].includes(String(status || '').toLowerCase())
   }
 
+  #enqueueRecovery(state, reason) {
+    if (!state || state.recoveryPending || state.recoveryQueued) return
+
+    const now = Date.now()
+    if (state.lastRecoveryAt && now - state.lastRecoveryAt < this.minRecoveryGapMs) {
+      return
+    }
+
+    state.recoveryQueued = true
+    this.recoveryQueue.push({ sessionId: state.sessionId, reason })
+    this.#drainRecoveryQueue()
+  }
+
+  #drainRecoveryQueue() {
+    while (this.recoveryInFlight < this.maxRecoveryConcurrency && this.recoveryQueue.length > 0) {
+      const item = this.recoveryQueue.shift()
+      if (!item) continue
+
+      const state = this.sessions.get(item.sessionId)
+      if (!state) continue
+
+      state.recoveryQueued = false
+      this.recoveryInFlight += 1
+
+      void this.#restartStalledSession(state, item.reason).finally(() => {
+        this.recoveryInFlight = Math.max(0, this.recoveryInFlight - 1)
+        this.#drainRecoveryQueue()
+      })
+    }
+  }
+
   async #restartStalledSession(state, reason) {
     if (!state || state.recoveryPending) return
+
+    const now = Date.now()
+    if (state.lastRecoveryAt && now - state.lastRecoveryAt < this.minRecoveryGapMs) {
+      return
+    }
+
     state.recoveryPending = true
+    state.lastRecoveryAt = now
+
     try {
       console.log(`[manager:${state.sessionId}] ${reason}; restarting worker`)
       await this.startSession(state.sessionId, {
@@ -311,7 +389,7 @@ export class SessionManager extends EventEmitter {
         const stalledFor = Number.isFinite(updatedAt) ? Date.now() - updatedAt : stallMs
         if (stalledFor < stallMs) continue
 
-        void this.#restartStalledSession(state, `Restore sweep found ${status} session stalled for ${stalledFor}ms`)
+        this.#enqueueRecovery(state, `Restore sweep found ${status} session stalled for ${stalledFor}ms`)
       }
     }, sweepMs)
 
@@ -330,7 +408,7 @@ export class SessionManager extends EventEmitter {
       if (!current || current.status !== 'reconnecting' || !current.worker) return
       const stalledFor = Date.now() - (current.reconnectSince || Date.now())
       if (stalledFor < reconnectStallMs) return
-      await this.#restartStalledSession(current, `Reconnect stalled for ${stalledFor}ms`)
+      this.#enqueueRecovery(current, `Reconnect stalled for ${stalledFor}ms`)
     }, reconnectStallMs)
   }
 
@@ -355,8 +433,11 @@ export class SessionManager extends EventEmitter {
       if (msg.status === 'reconnecting') {
         this.#scheduleReconnectWatch(state)
       }
-      // Reset failure counter on successful connection
-      if (msg.status === 'running') state.restartCount = 0
+      // Reset failure counter and stale error once a session is healthy again
+      if (msg.status === 'running') {
+        state.restartCount = 0
+        state.lastError = null
+      }
       state.updatedAt = new Date().toISOString()
       if (msg.jid) state.jid = msg.jid
       if (msg.error && !(state.pairingCode && msg.status === 'logged_out')) state.lastError = msg.error
@@ -394,7 +475,7 @@ export class SessionManager extends EventEmitter {
     if (msg.type === 'error') {
       const errMsg = msg.error || 'unknown worker error'
       state.lastError = errMsg
-      if (/MessageCounterError|Key used already or never filled/i.test(errMsg)) {
+      if (/MessageCounterError|Key used already or never filled/i.test(errMsg) && state.status !== 'running') {
         state.status = 'logged_out'
       }
       state.updatedAt = new Date().toISOString()
@@ -409,6 +490,7 @@ export class SessionManager extends EventEmitter {
     if (!state.worker) {
       state.status = 'stopped'
       state.updatedAt = new Date().toISOString()
+      this.emit('session.update', this.#serializeSession(state))
       return this.#serializeSession(state)
     }
 

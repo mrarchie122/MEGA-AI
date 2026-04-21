@@ -224,6 +224,7 @@ global.__require = function req(fileUrl = import.meta.url) {
       jidNormalizedUser,
     } = baileys
 
+    fs.mkdirSync(authDir, { recursive: true })
     const { state, saveCreds } = await useMultiFileAuthState(authDir)
     sendLog('Auth state loaded')
 
@@ -371,6 +372,7 @@ global.__require = function req(fileUrl = import.meta.url) {
       // Log when WhatsApp explicitly sends reconnecting status
       if (connection === 'connecting') {
         sendLog('🔄 Reconnecting...')
+        if (process.send) process.send({ type: 'status', status: 'connecting' })
       }
 
       if (connection === 'close') {
@@ -424,8 +426,8 @@ global.__require = function req(fileUrl = import.meta.url) {
         }
 
         if (code === 401 && !hasOpenedConnection && !pairingRequested && !pairingCodeIssued) {
-          sendLog('Initial connection failure before open; restarting worker for retry')
-          process.exit(101)
+          sendLog('Initial connection failure before open; marking session logged_out to stop retry storm')
+          process.exit(103)
           return
         }
 
@@ -444,12 +446,27 @@ global.__require = function req(fileUrl = import.meta.url) {
     })
 
     // ── Credentials saved → persist immediately ───────────────────────────────
-    conn.ev.on('creds.update', () => {
-      saveCreds()
-      const now = Date.now()
-      if (now - lastCredsLogAt > 60000) {
-        lastCredsLogAt = now
-        sendLog('💾 Credentials saved')
+    conn.ev.on('creds.update', async () => {
+      try {
+        fs.mkdirSync(authDir, { recursive: true })
+        await saveCreds()
+        const now = Date.now()
+        if (now - lastCredsLogAt > 60000) {
+          lastCredsLogAt = now
+          sendLog('💾 Credentials saved')
+        }
+      } catch (error) {
+        const message = String(error?.message || error)
+        sendLog(`⚠️ Failed to save creds: ${message}`)
+        if (/ENOENT/i.test(message)) {
+          try {
+            fs.mkdirSync(authDir, { recursive: true })
+            await saveCreds()
+            sendLog('💾 Credentials saved after auth dir recovery')
+          } catch (retryError) {
+            sendLog(`❌ Credentials retry failed: ${String(retryError?.message || retryError)}`)
+          }
+        }
       }
     })
 

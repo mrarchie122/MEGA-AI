@@ -17,6 +17,7 @@ const DEFAULT_SESSION_ID = process.env.SESSION_ID?.trim() || 'primary'
 const app = express()
 
 app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 app.use(
   '/assets',
   express.static(path.join(projectRoot, 'assets'), {
@@ -190,6 +191,14 @@ app.delete("/api/sessions/:sessionId", async (req, res) => {
   }
 })
 
+// Handle malformed JSON payloads without noisy stack traces.
+app.use((err, _req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON payload' })
+  }
+  return next(err)
+})
+
 const server = app.listen(PORT, () => {
   console.log(`ARCHIE-MD-WEB-BOT manager running on port ${PORT}`)
 })
@@ -204,70 +213,219 @@ process.on('unhandledRejection', err => {
 
 setImmediate(async () => {
   try {
-    const restoreConcurrency = Math.max(1, Number(process.env.SESSION_RESTORE_CONCURRENCY || 4))
-    const restoreKickDelayMs = Math.max(500, Number(process.env.SESSION_RESTORE_KICK_DELAY_MS || 1000))
-    const restoreSettleMs = Math.max(15000, Number(process.env.SESSION_RESTORE_SETTLE_MS || 45000))
-    const restorePollMs = Math.max(500, Number(process.env.SESSION_RESTORE_POLL_MS || 2000))
+    const readNumber = (key, fallback) => {
+      const parsed = Number(process.env[key])
+      return Number.isFinite(parsed) ? parsed : fallback
+    }
+
+    const restoreMinConcurrency = Math.max(1, readNumber('SESSION_RESTORE_CONCURRENCY', 1))
+    const restoreMaxConcurrency = Math.max(
+      restoreMinConcurrency,
+      readNumber('SESSION_RESTORE_MAX_CONCURRENCY', Math.min(3, restoreMinConcurrency + 1))
+    )
+    const restoreKickDelayMs = Math.max(500, readNumber('SESSION_RESTORE_KICK_DELAY_MS', 1000))
+    const restoreSettleMs = Math.max(15000, readNumber('SESSION_RESTORE_SETTLE_MS', 20000))
+    const restorePollMs = Math.max(500, readNumber('SESSION_RESTORE_POLL_MS', 1000))
+    const restoreMaxAttempts = Math.max(1, readNumber('SESSION_RESTORE_MAX_ATTEMPTS', 2))
+    const restoreRetryDelayMs = Math.max(1000, readNumber('SESSION_RESTORE_RETRY_DELAY_MS', 3000))
+    const restoreMaxTransient = Math.max(
+      restoreMaxConcurrency,
+      readNumber('SESSION_RESTORE_MAX_TRANSIENT', restoreMaxConcurrency + 1)
+    )
+
     // Find all sessions with existing credentials
     const sessionsDir = path.join(projectRoot, 'sessions')
+    fs.mkdirSync(sessionsDir, { recursive: true })
     const entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
     const existingSessionIds = []
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
-      const credsPath = path.join(sessionsDir, entry.name, 'auth', 'creds.json')
-      if (fs.existsSync(credsPath)) {
+      const authCredsPath = path.join(sessionsDir, entry.name, 'auth', 'creds.json')
+      const legacyCredsPath = path.join(sessionsDir, entry.name, 'creds.json')
+      if (fs.existsSync(authCredsPath) || fs.existsSync(legacyCredsPath)) {
         existingSessionIds.push(entry.name)
       }
     }
 
-    if (existingSessionIds.length > 0) {
-        console.log(
-          `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(", ")}`
-        )
-        console.log(`Session restore pacing: ${restoreConcurrency} concurrent worker(s), settle timeout ${restoreSettleMs}ms, queue tick ${restoreKickDelayMs}ms`)
+    existingSessionIds.sort()
 
-      const pendingSessionIds = [...existingSessionIds]
+    if (existingSessionIds.length > 0) {
+      console.log(
+        `Auto-starting ${existingSessionIds.length} session(s) with existing creds: ${existingSessionIds.join(', ')}`
+      )
+      console.log(
+        `Session restore pacing: ${restoreMinConcurrency}-${restoreMaxConcurrency} concurrent worker(s), settle timeout ${restoreSettleMs}ms, queue tick ${restoreKickDelayMs}ms, max attempts ${restoreMaxAttempts}`
+      )
+
+      const transientStatuses = new Set(['starting', 'connecting', 'reconnecting', 'pairing'])
+      const pendingRestoreJobs = existingSessionIds.map(sessionId => ({
+        sessionId,
+        attempt: 1,
+        readyAt: Date.now(),
+      }))
       const activeSessionIds = new Set()
+      let currentConcurrency = restoreMinConcurrency
+      const restoreStats = {
+        startedAttempts: 0,
+        retried: 0,
+        running: 0,
+        loggedOut: 0,
+        deferred: 0,
+        failed: 0,
+        skippedActive: 0,
+      }
+
+      const isTransientStatus = status => transientStatuses.has(String(status || '').toLowerCase())
+
+      const getTransientCount = () => {
+        return sessionManager
+          .listSessions()
+          .reduce((count, session) => count + (isTransientStatus(session.status) ? 1 : 0), 0)
+      }
+
+      const adjustConcurrency = (delta, reason) => {
+        const next = Math.min(
+          restoreMaxConcurrency,
+          Math.max(restoreMinConcurrency, currentConcurrency + delta)
+        )
+        if (next === currentConcurrency) return
+        currentConcurrency = next
+        console.log(`Adjusted restore concurrency to ${currentConcurrency} (${reason})`)
+      }
 
       const waitForSessionToSettle = async sessionId => {
         const deadline = Date.now() + restoreSettleMs
         while (Date.now() < deadline) {
           const current = sessionManager.getSession(sessionId)
           const status = String(current?.status || '').toLowerCase()
-          if (!['starting', 'connecting', 'reconnecting', 'pairing'].includes(status)) {
-            return current
+          if (!isTransientStatus(status)) {
+            return { session: current, status, timedOut: false }
           }
           await new Promise(resolve => setTimeout(resolve, restorePollMs))
         }
-        return sessionManager.getSession(sessionId)
+
+        const stalled = sessionManager.getSession(sessionId)
+        const stalledStatus = String(stalled?.status || '').toLowerCase()
+        return { session: stalled, status: stalledStatus, timedOut: true }
+      }
+
+      const queueRetry = (sessionId, attempt, reason) => {
+        if (attempt >= restoreMaxAttempts) return false
+        const nextAttempt = attempt + 1
+        pendingRestoreJobs.push({
+          sessionId,
+          attempt: nextAttempt,
+          readyAt: Date.now() + restoreRetryDelayMs * attempt,
+        })
+        restoreStats.retried += 1
+        console.warn(`Session ${sessionId} ${reason}; queued retry ${nextAttempt}/${restoreMaxAttempts}`)
+        return true
+      }
+
+      const handleRestoreOutcome = async (sessionId, attempt, settleResult) => {
+        const status = String(settleResult?.status || '').toLowerCase()
+        const timedOut = settleResult?.timedOut === true
+
+        if (status === 'running') {
+          restoreStats.running += 1
+          adjustConcurrency(1, 'successful restores')
+          return
+        }
+
+        if (status === 'logged_out') {
+          restoreStats.loggedOut += 1
+          return
+        }
+
+        if (timedOut && isTransientStatus(status)) {
+          const queued = queueRetry(sessionId, attempt, `stalled in ${status}`)
+          if (queued) {
+            try {
+              await sessionManager.stopSession(sessionId)
+            } catch {
+              // ignore stop failures while re-queueing
+            }
+            adjustConcurrency(-1, 'stalled sessions')
+            return
+          }
+
+          restoreStats.deferred += 1
+          console.warn(
+            `Session ${sessionId} remained ${status} after ${attempt} attempt(s); leaving worker active for background recovery sweep`
+          )
+          return
+        }
+
+        if (status === 'stopped' || status === 'crashed') {
+          if (queueRetry(sessionId, attempt, `ended as ${status}`)) {
+            adjustConcurrency(-1, `${status} outcomes`)
+            return
+          }
+          restoreStats.failed += 1
+          return
+        }
+
+        if (isTransientStatus(status)) {
+          if (!queueRetry(sessionId, attempt, `still ${status}`)) {
+            restoreStats.deferred += 1
+          }
+          return
+        }
+
+        if (!queueRetry(sessionId, attempt, `ended with status ${status || 'unknown'}`)) {
+          restoreStats.failed += 1
+        }
       }
 
       const launchNextRestore = () => {
-        while (activeSessionIds.size < restoreConcurrency && pendingSessionIds.length > 0) {
-          const sessionId = pendingSessionIds.shift()
-          if (!sessionId) break
+        while (activeSessionIds.size < currentConcurrency && pendingRestoreJobs.length > 0) {
+          if (getTransientCount() >= restoreMaxTransient) {
+            break
+          }
+
+          const now = Date.now()
+          const nextReadyIndex = pendingRestoreJobs.findIndex(job => job.readyAt <= now)
+          if (nextReadyIndex === -1) {
+            break
+          }
+
+          const [job] = pendingRestoreJobs.splice(nextReadyIndex, 1)
+          if (!job?.sessionId) break
+
+          const { sessionId, attempt } = job
           activeSessionIds.add(sessionId)
 
           void (async () => {
             try {
               const existing = sessionManager.getSession(sessionId)
-              if (existing && existing.pid) {
+              const existingStatus = String(existing?.status || '').toLowerCase()
+              if (existing?.pid && !['stopped', 'crashed', 'logged_out'].includes(existingStatus)) {
+                restoreStats.skippedActive += 1
+                console.log(
+                  `Skipping restore start for ${sessionId}; already active in status ${existingStatus || 'unknown'}`
+                )
                 return
               }
 
-              console.log(`Auto-starting session ${sessionId}...`)
+              restoreStats.startedAttempts += 1
+              console.log(`Auto-starting session ${sessionId} (attempt ${attempt}/${restoreMaxAttempts})...`)
               try {
                 await sessionManager.startSession(sessionId, {
                   phoneNumber: '',
                   pairing: false,
                 })
-                console.log(`Session ${sessionId} started`)
               } catch (sessionError) {
                 console.error(`Failed to auto-start ${sessionId}:`, sessionError.message)
+                adjustConcurrency(-1, 'start failures')
+                if (!queueRetry(sessionId, attempt, 'failed to start')) {
+                  restoreStats.failed += 1
+                }
+                return
               }
 
-              await waitForSessionToSettle(sessionId)
+              const settleResult = await waitForSessionToSettle(sessionId)
+              await handleRestoreOutcome(sessionId, attempt, settleResult)
             } finally {
               activeSessionIds.delete(sessionId)
               launchNextRestore()
@@ -277,10 +435,14 @@ setImmediate(async () => {
       }
 
       launchNextRestore()
-      while (pendingSessionIds.length > 0 || activeSessionIds.size > 0) {
+      while (pendingRestoreJobs.length > 0 || activeSessionIds.size > 0) {
         await new Promise(resolve => setTimeout(resolve, restoreKickDelayMs))
         launchNextRestore()
       }
+
+      console.log(
+        `Session restore summary: attempts=${restoreStats.startedAttempts}, retried=${restoreStats.retried}, running=${restoreStats.running}, logged_out=${restoreStats.loggedOut}, deferred=${restoreStats.deferred}, failed=${restoreStats.failed}, skipped_active=${restoreStats.skippedActive}, final_concurrency=${currentConcurrency}`
+      )
     } else {
       console.log(`No creds found — waiting for user to connect via dashboard.`)
     }
