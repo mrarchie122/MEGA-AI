@@ -303,11 +303,11 @@ export class SessionManager extends EventEmitter {
     state.reconnectSince = null
   }
 
-  #getStallMs() {
-    return Math.max(
-      15000,
-      Number(process.env.SESSION_RESTORE_STALL_MS || process.env.SESSION_RECONNECT_STALL_MS || 45000)
-    )
+  #getStallMs(state) {
+    const defaultStallMs = Number(process.env.SESSION_RESTORE_STALL_MS || process.env.SESSION_RECONNECT_STALL_MS || 45000)
+    const pairingStallMs = Number(process.env.SESSION_RESTORE_PAIRING_STALL_MS || 300000)
+    if (state?.pairingCode) return Math.max(15000, pairingStallMs)
+    return Math.max(15000, defaultStallMs)
   }
 
   #isTransientStatus(status) {
@@ -379,12 +379,12 @@ export class SessionManager extends EventEmitter {
     const sweepMs = Math.max(10000, Number(process.env.SESSION_RESTORE_SWEEP_MS || 15000))
 
     this.restoreSweepTimer = setInterval(() => {
-      const stallMs = this.#getStallMs()
       for (const state of this.sessions.values()) {
         const status = String(state.status || '').toLowerCase()
         if (!this.#isTransientStatus(status)) continue
         if (status === 'logged_out' || status === 'stopped') continue
 
+        const stallMs = this.#getStallMs(state)
         const updatedAt = Date.parse(state.updatedAt || '')
         const stalledFor = Number.isFinite(updatedAt) ? Date.now() - updatedAt : stallMs
         if (stalledFor < stallMs) continue
@@ -400,7 +400,7 @@ export class SessionManager extends EventEmitter {
 
   #scheduleReconnectWatch(state) {
     if (state.reconnectTimer || state.status !== 'reconnecting') return
-    const reconnectStallMs = this.#getStallMs()
+    const reconnectStallMs = this.#getStallMs(state)
     state.reconnectSince = state.reconnectSince || Date.now()
     state.reconnectTimer = setTimeout(async () => {
       state.reconnectTimer = null

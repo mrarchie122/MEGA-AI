@@ -268,6 +268,107 @@
       term.scrollTop = term.scrollHeight;
     }
 
+    function showPairingCode(code) {
+      pairingBox.innerHTML = `
+        <div style="text-align:center;padding:1rem">
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.6rem">Enter this code in WhatsApp → Linked Devices → Link with Phone Number</div>
+          <div style="font-size:1.85rem;letter-spacing:6px;font-family:'Fira Code',monospace;color:var(--orange);font-weight:700">${code}</div>
+          <button onclick="copyPairCode('${code}')" style="margin-top:0.9rem;background:var(--orange);color:#000;border:none;padding:0.5rem 0.9rem;border-radius:6px;font-weight:700;cursor:pointer">COPY CODE</button>
+        </div>`;
+      pairingBox.style.display = 'block';
+      mainBtn.disabled = false;
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> REQUEST NEW CODE';
+    }
+
+    function showQrCode(dataUrl) {
+      pairingBox.innerHTML = `<img src="${dataUrl}" style="width:260px;height:260px;border-radius:12px;display:block;margin:0 auto;background:#fff;padding:10px;" />`;
+      pairingBox.style.display = 'block';
+      mainBtn.disabled = false;
+      mainBtn.style.background = '';
+      mainBtn.style.color = '';
+      mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M7 17v1a3 3 0 0 0 3 3h1"/><path d="M7 10v4"/><path d="M10 10h4"/></svg> REFRESH QR';
+    }
+
+    let lastStatus = null;
+    let lastPairingCode = null;
+    let lastErrorText = null;
+
+    function applySessionState(body) {
+      if (!body || body.sessionId !== mySessionId) return;
+
+      const currentStatus = String(body.status || '').toLowerCase();
+
+      if (body.pairingCode) {
+        showPairingCode(body.pairingCode);
+        if (lastPairingCode !== body.pairingCode) {
+          addLog(`✅ Pair code: ${body.pairingCode}`, 'info');
+          lastPairingCode = body.pairingCode;
+        }
+        lastStatus = 'pairing';
+        return;
+      }
+
+      if (body.qrDataUrl && useQR) {
+        showQrCode(body.qrDataUrl);
+        if (lastStatus !== 'qr_ready') addLog('QR code ready — scan with WhatsApp now!', 'info');
+        lastStatus = 'qr_ready';
+        return;
+      }
+
+      if (currentStatus === 'running') {
+        if (lastStatus !== 'running') addLog('Connected successfully.', 'info');
+        pairingBox.style.display = 'none';
+        mainBtn.disabled = true;
+        mainBtn.textContent = '✅ CONNECTED';
+        mainBtn.style.background = 'var(--green)';
+        mainBtn.style.color = '#fff';
+        lastStatus = 'running';
+        lastErrorText = null;
+        return;
+      }
+
+      if (currentStatus === 'connecting' || currentStatus === 'starting') {
+        if (lastStatus !== currentStatus) addLog('Connecting...', 'warn');
+        lastStatus = currentStatus;
+        return;
+      }
+
+      if (currentStatus === 'reconnecting') {
+        if (lastStatus !== 'reconnecting') addLog('Reconnecting...', 'warn');
+        lastStatus = 'reconnecting';
+        return;
+      }
+
+      if (currentStatus === 'pairing') {
+        if (lastStatus !== 'pairing') addLog('Waiting for pairing confirmation...', 'info');
+        lastStatus = 'pairing';
+        return;
+      }
+
+      if (currentStatus === 'logged_out') {
+        if (lastStatus !== 'logged_out') addLog('Session logged out. Enter number and request a new pair code.', 'warn');
+        pairingBox.style.display = 'none';
+        mainBtn.disabled = false;
+        mainBtn.style.background = '';
+        mainBtn.style.color = '';
+        mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> GET PAIR CODE';
+        setMode('pair');
+        lastStatus = 'logged_out';
+        return;
+      }
+
+      if (body.lastError && currentStatus !== 'running') {
+        if (lastErrorText !== body.lastError) {
+          addLog(`Error: ${body.lastError}`, 'error');
+          lastErrorText = body.lastError;
+        }
+        if (currentStatus === 'crashed' || currentStatus === 'stopped') {
+          setMode(useQR ? 'qr' : 'pair');
+        }
+        lastStatus = currentStatus || lastStatus;
+      }
+    }
+
     addLog('Connected to ARCHIE MD server', 'info');
     addLog('Terminal online. Waiting for events...');
     addLog(`Session ID: ${mySessionId}`, 'info');
@@ -291,6 +392,22 @@
     }
 
     refreshSessions();
+
+    async function syncCurrentSession() {
+      try {
+        const res = await fetch(`/api/sessions/${mySessionId}`);
+        if (!res.ok) return;
+        const body = await res.json();
+        applySessionState(body);
+      } catch {
+        // ignore polling failures; SSE remains the primary channel
+      }
+    }
+
+    setInterval(() => {
+      if (!mainBtn.disabled && pairingBox.style.display !== 'block') return;
+      syncCurrentSession();
+    }, 1500);
 
 
     function initStatInteractions() {
@@ -325,13 +442,20 @@
     async function connect() {
       const pno = phoneInput.value.replace(/[^0-9]/g, "");
       const wantsPairCode = useQR ? false : pno.length > 0;
+
+      if (!useQR && !wantsPairCode) {
+        addLog('Enter phone number, then click GET PAIR CODE.', 'warn');
+        mainBtn.disabled = false;
+        mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> GET PAIR CODE';
+        return;
+      }
+
       mainBtn.disabled = true;
         mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg> REQUESTING...';
       pairingBox.style.display = "none";
 
       if (useQR) addLog("Requesting QR code...", "info");
       else if (wantsPairCode) addLog("Requesting pair code for +" + pno + "...");
-      else addLog("Attempting automatic session restore...", "info");
 
       try {
         const res = await fetch("/api/sessions/" + mySessionId + "/start", {
@@ -343,7 +467,6 @@
         if (res.ok === false) throw new Error(data.error || "Server error");
         if (useQR) addLog("Session started — awaiting QR scan...", "info");
         else if (wantsPairCode) addLog("Session started — awaiting pair code...", "info");
-        else addLog("Session restore requested. Waiting for reconnect...", "info");
       } catch (e) {
         addLog("Request failed: " + e.message, "error");
         setMode(useQR ? "qr" : "pair");
@@ -406,7 +529,6 @@
 
     // ── SSE ──────────────────────────────────────────────────────────────────────
     const evtSource = new EventSource('/api/events');
-    let lastStatus = null;
 
     evtSource.onmessage = (event) => {
       try {
@@ -414,65 +536,7 @@
 
         if (type === 'session.update') {
           refreshSessions();
-
-          if (body.sessionId !== mySessionId) return;
-
-          if (body.pairingCode) {
-            // Pair code received
-            pairingBox.innerHTML = `
-              <div style="text-align:center;padding:1rem">
-                <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.6rem">Enter this code in WhatsApp → Linked Devices → Link with Phone Number</div>
-                <div style="font-size:1.85rem;letter-spacing:6px;font-family:'Fira Code',monospace;color:var(--orange);font-weight:700">${body.pairingCode}</div>
-                <button onclick="copyPairCode('${body.pairingCode}')" style="margin-top:0.9rem;background:var(--orange);color:#000;border:none;padding:0.5rem 0.9rem;border-radius:6px;font-weight:700;cursor:pointer">COPY CODE</button>
-              </div>`;
-            pairingBox.style.display = 'block';
-            addLog(`✅ Pair code: ${body.pairingCode}`, 'info');
-            mainBtn.disabled = false;
-            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> REQUEST NEW CODE';
-          }
-          else if (body.qrDataUrl && useQR) {
-            // QR Code received
-            pairingBox.innerHTML = `<img src="${body.qrDataUrl}" style="width:260px;height:260px;border-radius:12px;display:block;margin:0 auto;background:#fff;padding:10px;" />`;
-            pairingBox.style.display = 'block';
-            addLog('QR code ready — scan with WhatsApp now!', 'info');
-            mainBtn.disabled = false;
-            mainBtn.style.background = '';
-            mainBtn.style.color = '';
-            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M7 17v1a3 3 0 0 0 3 3h1"/><path d="M7 10v4"/><path d="M10 10h4"/></svg> REFRESH QR';
-          }
-          else if (body.status === 'running') {
-            if (lastStatus !== 'running') addLog('Connected successfully.', 'info');
-            pairingBox.style.display = 'none';
-            mainBtn.disabled = true;
-            mainBtn.textContent = '✅ CONNECTED';
-            mainBtn.style.background = 'var(--green)';
-            mainBtn.style.color = '#fff';
-          }
-          else if (body.status === 'connecting' || body.status === 'starting') {
-            if (lastStatus !== body.status) addLog('Connecting...', 'warn');
-          }
-          else if (body.status === 'reconnecting') {
-            if (lastStatus !== 'reconnecting') addLog('Reconnecting...', 'warn');
-          }
-          else if (body.status === 'pairing') {
-            if (lastStatus !== 'pairing') addLog('Waiting for pairing confirmation...', 'info');
-          }
-          else if (body.status === 'logged_out') {
-            if (lastStatus !== 'logged_out') addLog('Session logged out. Enter number and request a new pair code.', 'warn');
-            mainBtn.disabled = false;
-            mainBtn.style.background = '';
-            mainBtn.style.color = '';
-            mainBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> GET PAIR CODE';
-            setMode('pair');
-          }
-          else if (body.lastError && body.status !== 'running') {
-            addLog(`Error: ${body.lastError}`, 'error');
-            if (body.status === 'crashed' || body.status === 'stopped') {
-              setMode(useQR ? 'qr' : 'pair');
-            }
-          }
-
-          lastStatus = body.status || lastStatus;
+          applySessionState(body);
         }
       } catch (e) { console.error('SSE error', e); }
     };
@@ -481,7 +545,7 @@
 
     // Default UX: pair-code mode first; QR remains one-click switch.
     setMode('pair');
-    autoRestoreSession();
+    refreshSessions();
   </script>
 </body>
 </html>

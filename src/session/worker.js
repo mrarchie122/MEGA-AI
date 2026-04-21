@@ -532,6 +532,7 @@ global.__require = function req(fileUrl = import.meta.url) {
 
     // ── Pair-code request (only when not already registered) ──────────────────
     if (shouldPair && phoneNumber && !conn.authState.creds.registered) {
+      pairingRequested = true
       setTimeout(async () => {
         if (conn.authState.creds.registered || conn.user?.id || lastConnectionState === 'open') {
           sendLog('Skipping pair-code request because session is already connected/registered')
@@ -554,7 +555,7 @@ global.__require = function req(fileUrl = import.meta.url) {
         }
         if (process.send)
           process.send({ type: 'error', error: 'Failed to generate pair code after 5 attempts.' })
-      }, 3000) // wait 3s for socket to establish before requesting
+      }, 1000) // request earlier so the dashboard gets the code faster
     } else if (shouldPair && !phoneNumber && !conn.authState.creds.registered) {
       if (process.send)
         process.send({ type: 'error', error: 'Pair Code mode requires a phone number.' })
